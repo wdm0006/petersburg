@@ -85,7 +85,7 @@ class Graph(object):
         for outcome in self.start_node.outcomes:
             out = []
             for _ in range(iters):
-                payoff, cost = outcome[1].get_outcome()
-                out.append(payoff - cost - outcome[1].cost)
-            choice.update({outcome[1].to_node.node_id: float(sum(out))/len(out)})
+                payoff, cost = outcome[0].get_outcome()
+                out.append(payoff - cost - outcome[0].cost)
+            choice.update({outcome[0].to_node.node_id: float(sum(out))/len(out)})
         return choice
