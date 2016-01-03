@@ -55,8 +55,32 @@ class Node():
             payoff, cost = edge.get_outcome()
             return payoff, cost + edge.get_cost()
 
+    def to_tree(self):
+        if self.outcomes == []:
+            return {self.__repr__(): self.__repr__()}
+        else:
+            blob = {}
+            for x in self.outcomes:
+                blob.update(x[0].to_node.to_tree())
+
+            return {self.__repr__(): blob}
+
+    def get_nodes(self, node_list):
+        node_list.update({self})
+        if self.outcomes != []:
+            for outcome in self.outcomes:
+                node_list.update(outcome[0].to_node.get_nodes(node_list))
+        return node_list
+
+    def get_edges(self, edge_list):
+        if self.outcomes != []:
+            for outcome in self.outcomes:
+                edge_list.update({outcome[0]})
+                edge_list.update(outcome[0].to_node.get_edges(edge_list))
+        return edge_list
+
     def __str__(self):
         return 'Node %s, with payoff %s and outcomes %s' % (str(self.node_id), str(self.payoff), str(self.outcomes))
 
     def __repr__(self):
-        return self.__str__()
+        return str(self.node_id)

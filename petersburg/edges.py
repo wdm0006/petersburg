@@ -18,3 +18,6 @@ class Edge(object):
 
     def get_cost(self):
         return self.cost
+
+    def __repr__(self):
+        return '%s -> %s' % (self.from_node.__repr__(), self.to_node.__repr__())

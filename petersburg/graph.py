@@ -81,6 +81,7 @@ class Graph(object):
         :param iters:
         :return:
         """
+
         choice = {}
         for outcome in self.start_node.outcomes:
             out = []
@@ -89,3 +90,37 @@ class Graph(object):
                 out.append(payoff - cost - outcome[0].cost)
             choice.update({outcome[0].to_node.node_id: float(sum(out))/len(out)})
         return choice
+
+    def to_tree(self):
+        """
+
+        :return:
+        """
+
+        return self.start_node.to_tree()
+
+    def to_dict_of_dicts(self):
+        """
+
+        :return:
+        """
+        return self.start_node.get_edges(set())
+
+    def edge_list(self):
+        return self.start_node.get_edges(set())
+
+    def node_list(self):
+        return self.start_node.get_nodes(set())
+
+    def plot(self):
+        """
+        :return:
+        """
+
+        try:
+            import networkx as nx
+            import matplotlib.pyplot as plt
+        except ImportError as e:
+            raise ImportError('the plot function requires networkx and matplotlib')
+
+        return None
