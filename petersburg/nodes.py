@@ -10,7 +10,7 @@ class Node():
     probabilistically picking from a selection of outcomes (edges), or possibly having no outcomes, and being the end
     of the game.
     """
-    def __init__(self, node_id, payoff=0, weight=1):
+    def __init__(self, node_id, payoff=0):
         """
 
         :return:
@@ -28,6 +28,7 @@ class Node():
         :param cost:
         :return:
         """
+
         self.outcomes.append((Edge(self, node, cost=cost), weight))
 
     @staticmethod
