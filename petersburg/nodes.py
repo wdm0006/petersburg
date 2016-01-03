@@ -28,8 +28,7 @@ class Node():
         :param cost:
         :return:
         """
-
-        self.outcomes.append((weight, Edge(self, node, cost=cost)))
+        self.outcomes.append((Edge(self, node, cost=cost), weight))
 
     @staticmethod
     def weighted_choice(choices):
@@ -51,9 +50,9 @@ class Node():
         if self.outcomes == []:
             return self.payoff, 0
         else:
-            edge = random.choice(self.outcomes)
-            payoff, cost = edge[1].get_outcome()
-            return payoff, cost + edge[1].get_cost()
+            edge = self.weighted_choice(self.outcomes)
+            payoff, cost = edge.get_outcome()
+            return payoff, cost + edge.get_cost()
 
     def __str__(self):
         return 'Node %s, with payoff %s and outcomes %s' % (str(self.node_id), str(self.payoff), str(self.outcomes))
