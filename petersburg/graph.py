@@ -1,3 +1,13 @@
+"""
+.. module:: graph
+   :platform: Unix, Windows
+   :synopsis:
+
+.. moduleauthor:: Will McGinnis <will@pedalwrencher.com>
+
+
+"""
+
 from petersburg import Node
 
 __author__ = 'willmcginnis'

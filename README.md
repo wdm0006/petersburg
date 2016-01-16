@@ -35,7 +35,7 @@ to capture that concisely.
 Installation / Usage
 ====================
 
-To install use pip (actually not yet, but soon):
+To install use pip:
 
     $ pip install petersburg
 

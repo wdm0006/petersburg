@@ -1,3 +1,13 @@
+"""
+.. module:: node
+   :platform: Unix, Windows
+   :synopsis:
+
+.. moduleauthor:: Will McGinnis <will@pedalwrencher.com>
+
+
+"""
+
 from petersburg import Edge
 import random
 

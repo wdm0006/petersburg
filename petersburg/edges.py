@@ -1,4 +1,12 @@
-import sys
+"""
+.. module:: edge
+   :platform: Unix, Windows
+   :synopsis:
+
+.. moduleauthor:: Will McGinnis <will@pedalwrencher.com>
+
+
+"""
 
 __author__ = 'willmcginnis'
 
