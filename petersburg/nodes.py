@@ -65,6 +65,19 @@ class Node():
             payoff, cost = edge.get_outcome()
             return payoff, cost + edge.get_cost()
 
+    def get_outcome_node(self):
+        """
+
+        :return:
+        """
+
+        if self.outcomes == []:
+            return self.node_id
+        else:
+            edge = self.weighted_choice(self.outcomes)
+            node_id = edge.get_outcome_node()
+            return node_id
+
     def to_tree(self):
         if self.outcomes == []:
             return {self.__repr__(): self.__repr__()}

@@ -71,19 +71,38 @@ class Graph(object):
 
         return self
 
-    def get_outcome(self):
+    def get_outcome(self, iters=None, ruin=False, starting_bank=0):
         """
         Starting with the starting node, the graph is walked once, and the profit is returned, run multiple times to get
         an expected value estimate.
 
         :return:
         """
+        if iters is None:
+            payoff, cost = self.start_node.get_outcome()
+            return payoff - cost
+        else:
+            bank = starting_bank
+            for _ in range(iters):
+                payoff, cost = self.start_node.get_outcome()
+                bank = bank + payoff - cost
+                if ruin:
+                    if bank <= 0:
+                        return 0
+            return bank
 
-        payoff, cost = self.start_node.get_outcome()
+    def get_outcome_node(self):
+        """
+        Starting with the starting node, the graph is walked once, and the ID of the final node reached is returned
 
-        return payoff - cost
+        :return:
+        """
 
-    def get_options(self, iters=100):
+        node_id = self.start_node.get_outcome_node()
+
+        return node_id
+
+    def get_options(self, iters=100, extended_stats=False):
         """
         Starts with each of the outcomes from the starting node seperately, to get the expected values (using iters
         iterations) for each of the initial options. Returns a dictionary of node_id: expected profit pairs.
@@ -98,7 +117,17 @@ class Graph(object):
             for _ in range(iters):
                 payoff, cost = outcome[0].get_outcome()
                 out.append(payoff - cost - outcome[0].cost)
-            choice.update({outcome[0].to_node.node_id: float(sum(out))/len(out)})
+            if not extended_stats:
+                choice.update({outcome[0].to_node.node_id: float(sum(out))/len(out)})
+            else:
+                choice.update({
+                    outcome[0].to_node.node_id: {
+                        'mean': float(sum(out))/len(out),
+                        'max': max(out),
+                        'min': min(out),
+                        'count': len(out),
+                    }
+                })
         return choice
 
     def to_tree(self):

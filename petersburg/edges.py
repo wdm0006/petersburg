@@ -24,6 +24,9 @@ class Edge(object):
     def get_outcome(self):
         return self.to_node.get_outcome()
 
+    def get_outcome_node(self):
+        return self.to_node.get_outcome_node()
+
     def get_cost(self):
         return self.cost
 
