@@ -80,7 +80,7 @@ class Node():
 
     def to_tree(self):
         if self.outcomes == []:
-            return {self.__repr__(): self.__repr__()}
+            return {self.__repr__(): None}
         else:
             blob = {}
             for x in self.outcomes:

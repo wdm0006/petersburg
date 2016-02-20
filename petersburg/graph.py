@@ -139,10 +139,6 @@ class Graph(object):
         return self.start_node.to_tree()
 
     def to_dict_of_dicts(self):
-        """
-
-        :return:
-        """
         return self.start_node.get_edges(set())
 
     def edge_list(self):
@@ -151,15 +147,12 @@ class Graph(object):
     def node_list(self):
         return self.start_node.get_nodes(set())
 
-    def plot(self):
+    def from_adjacency_matrix(self, adj, labels):
         """
+        Will create a petersburg graph from an adjacency matrix of weights (all costs default to 0).
+
+        :param adj:
         :return:
         """
 
-        try:
-            import networkx as nx
-            import matplotlib.pyplot as plt
-        except ImportError as e:
-            raise ImportError('the plot function requires networkx and matplotlib')
-
-        return None
+        return self

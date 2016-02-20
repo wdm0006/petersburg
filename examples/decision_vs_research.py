@@ -19,12 +19,14 @@ if __name__ == '__main__':
           10: {'payoff': 15, 'after': [{'node_id': 6, 'cost': 0}]},
      })
 
-    outcomes = []
-    for _ in range(100000):
-        outcomes.append(g.get_outcome())
-
-    print('\n\nSimulated Output With Random Start')
-    print(float(sum(outcomes))/len(outcomes))
-
-    print('\n\nSimulated Profit of Each Starting Move')
-    print(g.get_options(iters=10))
+    print(g.adjacency_matrix())
+    #
+    # outcomes = []
+    # for _ in range(100000):
+    #     outcomes.append(g.get_outcome())
+    #
+    # print('\n\nSimulated Output With Random Start')
+    # print(float(sum(outcomes))/len(outcomes))
+    #
+    # print('\n\nSimulated Profit of Each Starting Move')
+    # print(g.get_options(iters=10))
