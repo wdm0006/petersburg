@@ -8,6 +8,7 @@
 
 """
 
+import json
 from petersburg import Node
 
 __author__ = 'willmcginnis'
@@ -70,6 +71,33 @@ class Graph(object):
                 node_list[edge['node_id']].add_outcome(node_list[key], cost=edge.get('cost', 0), weight=edge.get('weight', 1))
 
         return self
+
+    def from_adj_matrix(self, A, labels=None):
+        """
+        Takes in a numpy adjacency matrix and forms a petersburg graph from it (of type [col -> row]).
+
+        :param A:
+        :return:
+        """
+
+        if labels is None:
+            labels = [(1, 1) for x in range(A.shape[0])]
+            labels[0] = (0, 0)
+
+        if A.shape[0] != A.shape[1]:
+            raise ValueError('Adjanceny Matrix must be square')
+
+        dict_spec = {}
+        for c_idx in range(A.shape[1]):
+            after = []
+            for r_idx in range(A.shape[0]):
+                if A[r_idx, c_idx] != 0.0:
+                    after.append({'node_id': r_idx, 'cost': 0, 'weight': A[r_idx, c_idx]})
+
+            if len(after) > 0 or labels[c_idx][0] == 0:
+                dict_spec[c_idx] = {'payoff': 0, 'after': after}
+
+        return self.from_dict(dict_spec)
 
     def get_outcome(self, iters=None, ruin=False, starting_bank=0):
         """
@@ -139,6 +167,10 @@ class Graph(object):
         return self.start_node.to_tree()
 
     def to_dict_of_dicts(self):
+        """
+
+        :return:
+        """
         return self.start_node.get_edges(set())
 
     def edge_list(self):
@@ -147,12 +179,15 @@ class Graph(object):
     def node_list(self):
         return self.start_node.get_nodes(set())
 
-    def from_adjacency_matrix(self, adj, labels):
+    def plot(self):
         """
-        Will create a petersburg graph from an adjacency matrix of weights (all costs default to 0).
-
-        :param adj:
         :return:
         """
 
-        return self
+        try:
+            import networkx as nx
+            import matplotlib.pyplot as plt
+        except ImportError as e:
+            raise ImportError('the plot function requires networkx and matplotlib')
+
+        return None

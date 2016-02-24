@@ -1,15 +1,24 @@
+from sklearn.base import BaseEstimator, ClassifierMixin
+from petersburg import graph
 import numpy as np
 import random
 
 __author__ = 'willmcginnis'
 
 
-class FrequencyEstimator:
+class FrequencyEstimator(BaseEstimator, ClassifierMixin):
 
     def __init__(self, verbose=False):
         self._frequency_matrix = None
         self._categories = None
         self.verbose = verbose
+
+    @property
+    def _cateogry_labels(self):
+        try:
+            return dict(zip(range(len(self._categories)), self._categories))
+        except AttributeError as e:
+            return {}
 
     def fit(self, X, y):
         """
@@ -29,9 +38,6 @@ class FrequencyEstimator:
 
         # set up the categories corresponding to each index
         self._categories = [(idx, a) for idx, b in enumerate([set(y[:, col].tolist()) for col in range(y.shape[1])]) for a in b]
-
-        if self.verbose:
-            print('Category Labels: %s' % (str(self._categories), ))
 
         for ridx in range(y.shape[0]):
             for fcidx, tcidx in zip(range(0, y.shape[1] - 1), range(1, y.shape[1])):
@@ -72,7 +78,7 @@ class FrequencyEstimator:
 
         return self
 
-    def predict(self, X, y):
+    def predict(self, X):
         """
         Uses the observed adjacency matrix to create a petersburg graph and simulate the outcome for each entry
 
@@ -81,19 +87,11 @@ class FrequencyEstimator:
         :return:
         """
 
-        # TODO this whole part.
+        g = graph.Graph()
+        g.from_adj_matrix(self._frequency_matrix, self._categories)
 
-        return None
+        y_hat = np.zeros((X.shape[0], 1))
+        for r_idx in range(y_hat.shape[0]):
+            y_hat[r_idx, 0] = g.get_outcome_node()
 
-if __name__ == '__main__':
-    y = np.array([[
-        random.choice([0, 1, 2]),
-        random.choice([0, 1, 1, 1, 2]),
-        random.choice([0, 1, 2, 2, 2, 2]),
-        random.choice([0, 1, 2, 2, 1, 3])
-    ] for _ in range(10000)])
-
-    clf = FrequencyEstimator(verbose=True)
-    clf.fit(None, y)
-
-    print(clf._frequency_matrix)
+        return y_hat

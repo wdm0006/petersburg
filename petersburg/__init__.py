@@ -11,10 +11,11 @@
 from petersburg.edges import Edge
 from petersburg.nodes import Node
 from petersburg.graph import Graph
-
+from petersburg.estimators import FrequencyEstimator
 
 __all__ = [
     'Node',
     'Graph',
-    'Edge'
+    'Edge',
+    'FrequencyEstimator'
 ]
