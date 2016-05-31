@@ -1,7 +1,7 @@
 import numpy as np
 import random
 import json
-from petersburg import FrequencyEstimator
+from petersburg import FrequencyEstimator, MixedModeEstimator
 
 __author__ = 'willmcginnis'
 
@@ -26,11 +26,13 @@ y = np.array([[
     )
 ] for _ in range(10000)])
 
+X = np.array([[random.random() for _ in range(25)] for _ in range(10000)])
+
 # train a frequency estimator
-clf = FrequencyEstimator(verbose=True)
-clf.fit(None, y)
+clf = FrequencyEstimator()
+clf.fit(X, y)
 freq_matrix = clf._frequency_matrix
-y_hat = clf.predict(np.zeros((10000, 10)))
+y_hat = clf.predict(np.array([[random.random() for _ in range(25)] for _ in range(1000)]))
 
 # print out what we've learned from it
 print('\nCategory Labels')

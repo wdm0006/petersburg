@@ -72,7 +72,7 @@ class Graph(object):
 
         return self
 
-    def from_adj_matrix(self, A, labels=None):
+    def from_adj_matrix(self, A, labels=None, clf_matrix=None):
         """
         Takes in a numpy adjacency matrix and forms a petersburg graph from it (of type [col -> row]).
 
@@ -92,14 +92,34 @@ class Graph(object):
             after = []
             for r_idx in range(A.shape[0]):
                 if A[r_idx, c_idx] != 0.0:
-                    after.append({'node_id': r_idx, 'cost': 0, 'weight': A[r_idx, c_idx]})
+                    try:
+                        clf = clf_matrix[r_idx][c_idx]
+                        if clf is not None:
+                            after.append({'node_id': r_idx, 'cost': 0, 'weight': clf})
+                        else:
+                            after.append({'node_id': r_idx, 'cost': 0, 'weight': A[r_idx, c_idx]})
+                    except (IndexError, TypeError) as e:
+                        after.append({'node_id': r_idx, 'cost': 0, 'weight': A[r_idx, c_idx]})
 
             if len(after) > 0 or labels[c_idx][0] == 0:
                 dict_spec[c_idx] = {'payoff': 0, 'after': after}
 
+        # add in root node (super hacky)
+        dict_spec[-1] = {'after': [], 'payoff': 0}
+        removed = []
+        for k in dict_spec.keys():
+            if k != -1 and len(dict_spec[k].get('after', [])) == 0:
+                removed.append(k)
+        for rem in removed:
+            del dict_spec[rem]
+        for k in dict_spec.keys():
+            for after in dict_spec[k].get('after', []):
+                if after.get('node_id') in removed:
+                    after['node_id'] = -1
+
         return self.from_dict(dict_spec)
 
-    def get_outcome(self, iters=None, ruin=False, starting_bank=0):
+    def get_outcome(self, iters=None, ruin=False, starting_bank=0, feature_vector=None):
         """
         Starting with the starting node, the graph is walked once, and the profit is returned, run multiple times to get
         an expected value estimate.
@@ -107,26 +127,26 @@ class Graph(object):
         :return:
         """
         if iters is None:
-            payoff, cost = self.start_node.get_outcome()
+            payoff, cost = self.start_node.get_outcome(feature_vector)
             return payoff - cost
         else:
             bank = starting_bank
             for _ in range(iters):
-                payoff, cost = self.start_node.get_outcome()
+                payoff, cost = self.start_node.get_outcome(feature_vector)
                 bank = bank + payoff - cost
                 if ruin:
                     if bank <= 0:
                         return 0
             return bank
 
-    def get_outcome_node(self):
+    def get_outcome_node(self, feature_vector=None):
         """
         Starting with the starting node, the graph is walked once, and the ID of the final node reached is returned
 
         :return:
         """
 
-        node_id = self.start_node.get_outcome_node()
+        node_id = self.start_node.get_outcome_node(feature_vector)
 
         return node_id
 

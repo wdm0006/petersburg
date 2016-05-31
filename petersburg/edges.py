@@ -21,11 +21,11 @@ class Edge(object):
         self.to_node = to_node
         self.cost = cost
 
-    def get_outcome(self):
-        return self.to_node.get_outcome()
+    def get_outcome(self, feature_vector=None):
+        return self.to_node.get_outcome(feature_vector=feature_vector)
 
-    def get_outcome_node(self):
-        return self.to_node.get_outcome_node()
+    def get_outcome_node(self, feature_vector=None):
+        return self.to_node.get_outcome_node(feature_vector=feature_vector)
 
     def get_cost(self):
         return self.cost

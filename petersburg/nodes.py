@@ -30,19 +30,36 @@ class Node():
         self.payoff = payoff
         self.outcomes = []
 
-    def add_outcome(self, node, cost=0, weight=1):
+    def add_outcome(self, node, cost=0, weight=1, classifier=None):
         """
-        Adds an outcome to this node
+        Adds an outcome to this node.  Can take in a cost, a weight, and/or a classifier.  If both a weight and classifier
+        are passed, then the classifier takes precesence, and must be able to predict a next node id
 
         :param node:
         :param cost:
         :return:
         """
 
-        self.outcomes.append((Edge(self, node, cost=cost), weight))
+        if classifier is None:
+            self.outcomes.append((Edge(self, node, cost=cost), weight))
+        else:
+            self.outcomes.append((Edge(self, node, cost=cost), classifier))
 
-    @staticmethod
-    def weighted_choice(choices):
+    def get_weights(self, feature_vector=None):
+        numeric_weights = sum([x[1] for x in self.outcomes if isinstance(x[1], float) or isinstance(x[1], int)])
+        w_out = []
+        for edge, w in self.outcomes:
+            if isinstance(w, float) or isinstance(w, int):
+                w_out.append((edge, w))
+            else:
+                # TODO: make this actually update probabilities properly
+                pr = w.predict_proba(feature_vector)[0][1] * float(numeric_weights) + (random.random() * 0.001)
+                w_out.append((edge, pr))
+
+        return w_out
+
+    def weighted_choice(self, feature_vector=None):
+        choices = self.get_weights(feature_vector=feature_vector)
         total = sum(w for c, w in choices)
         r = random.uniform(0, total)
         upto = 0
@@ -52,7 +69,7 @@ class Node():
             upto += w
         assert False, "Shouldn't get here"
 
-    def get_outcome(self):
+    def get_outcome(self, feature_vector=None):
         """
 
         :return:
@@ -61,11 +78,11 @@ class Node():
         if self.outcomes == []:
             return self.payoff, 0
         else:
-            edge = self.weighted_choice(self.outcomes)
-            payoff, cost = edge.get_outcome()
+            edge = self.weighted_choice(feature_vector)
+            payoff, cost = edge.get_outcome(feature_vector=feature_vector)
             return payoff, cost + edge.get_cost()
 
-    def get_outcome_node(self):
+    def get_outcome_node(self, feature_vector=None):
         """
 
         :return:
@@ -74,8 +91,8 @@ class Node():
         if self.outcomes == []:
             return self.node_id
         else:
-            edge = self.weighted_choice(self.outcomes)
-            node_id = edge.get_outcome_node()
+            edge = self.weighted_choice(feature_vector)
+            node_id = edge.get_outcome_node(feature_vector=feature_vector)
             return node_id
 
     def to_tree(self):
