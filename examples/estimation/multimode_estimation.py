@@ -38,13 +38,13 @@ def make_data(n_samples=10000):
         if random.random() < _chance_of_percip:
             if random.random() < _chance_of_heavy:
                 y.append([1, 1])
-                X.append([random.random() for _ in range(20)] + [random.random() * 0.2 + 1.1])
+                X.append([random.random() + 10 for _ in range(20)] + [random.random() * 0.2 + 1.1])
             else:
                 y.append([1, 2])
-                X.append([random.random() for _ in range(20)] + [random.random() * 0.2 + 2.1])
+                X.append([random.random() + 25 for _ in range(20)] + [random.random() * 0.2 + 2.1])
         else:
             y.append([0, 0])
-            X.append([random.random() for _ in range(20)] + [random.random() * 0.2 - 2.0])
+            X.append([random.random() - 10 for _ in range(20)] + [random.random() * 0.2 - 2.0])
 
     return np.array(X), np.array(y)
 
@@ -67,5 +67,5 @@ if __name__ == '__main__':
     print(outcomes)
 
     print('\nHistogram')
-    histogram = dict(zip(outcomes, [float(x) for x in np.histogram(y_hat, bins=[8.5, 9.5, 10.5, 11.5, 12.5, 13.5])[0]]))
+    histogram = dict(zip(outcomes, [float(x) for x in np.histogram(y_hat, bins=[1.5, 2.5, 3.5, 4.5])[0]]))
     print(json.dumps(histogram, sort_keys=True, indent=4))

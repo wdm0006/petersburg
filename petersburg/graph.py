@@ -95,27 +95,21 @@ class Graph(object):
                     try:
                         clf = clf_matrix[r_idx][c_idx]
                         if clf is not None:
-                            after.append({'node_id': r_idx, 'cost': 0, 'weight': clf})
+                            after.append({'node_id': r_idx, 'cost': 0, 'weight': clf, '_weight': A[r_idx, c_idx]})
                         else:
-                            after.append({'node_id': r_idx, 'cost': 0, 'weight': A[r_idx, c_idx]})
+                            after.append({'node_id': r_idx, 'cost': 0, 'weight': A[r_idx, c_idx], '_weight': A[r_idx, c_idx]})
                     except (IndexError, TypeError) as e:
-                        after.append({'node_id': r_idx, 'cost': 0, 'weight': A[r_idx, c_idx]})
+                        after.append({'node_id': r_idx, 'cost': 0, 'weight': A[r_idx, c_idx], '_weight': A[r_idx, c_idx]})
 
             if len(after) > 0 or labels[c_idx][0] == 0:
                 dict_spec[c_idx] = {'payoff': 0, 'after': after}
 
         # add in root node (super hacky)
         dict_spec[-1] = {'after': [], 'payoff': 0}
-        removed = []
         for k in dict_spec.keys():
             if k != -1 and len(dict_spec[k].get('after', [])) == 0:
-                removed.append(k)
-        for rem in removed:
-            del dict_spec[rem]
-        for k in dict_spec.keys():
-            for after in dict_spec[k].get('after', []):
-                if after.get('node_id') in removed:
-                    after['node_id'] = -1
+                # TODO: weight should be the sum of all downstream leaves.
+                dict_spec[k]['after'] = [{'node_id': -1, 'weight': 9, 'cost': 0}]
 
         return self.from_dict(dict_spec)
 
