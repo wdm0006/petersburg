@@ -46,14 +46,12 @@ class Node():
             self.outcomes.append((Edge(self, node, cost=cost), classifier))
 
     def get_weights(self, feature_vector=None):
-        numeric_weights = sum([x[1] for x in self.outcomes if isinstance(x[1], float) or isinstance(x[1], int)])
         w_out = []
         for edge, w in self.outcomes:
             if isinstance(w, float) or isinstance(w, int):
                 w_out.append((edge, w))
             else:
-                # TODO: make this actually update probabilities properly
-                pr = w.predict_proba(feature_vector)[0][1] * float(numeric_weights) + (random.random() * 0.001)
+                pr = w.predict_proba(feature_vector)[0][1]
                 w_out.append((edge, pr))
 
         return w_out

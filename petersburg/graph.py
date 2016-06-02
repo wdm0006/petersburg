@@ -9,6 +9,7 @@
 """
 
 import json
+import numpy as np
 from petersburg import Node
 
 __author__ = 'willmcginnis'
@@ -91,15 +92,38 @@ class Graph(object):
         for c_idx in range(A.shape[1]):
             after = []
             for r_idx in range(A.shape[0]):
-                if A[r_idx, c_idx] != 0.0:
+                if A[r_idx, c_idx] != 0.0 and not np.isnan(A[r_idx, c_idx]):
+                    row_sum = np.sum(A[r_idx, :])
+                    if row_sum != 0.0:
+                        weight = A[r_idx, c_idx] / row_sum
+                    else:
+                        weight = 0.0
                     try:
                         clf = clf_matrix[r_idx][c_idx]
                         if clf is not None:
-                            after.append({'node_id': r_idx, 'cost': 0, 'weight': clf, '_weight': A[r_idx, c_idx]})
+                            after.append({
+                                'node_id': r_idx,
+                                'cost': 0,
+                                'weight': clf,
+                                '_weight': weight,
+                                '_cnt': A[r_idx, c_idx]
+                            })
                         else:
-                            after.append({'node_id': r_idx, 'cost': 0, 'weight': A[r_idx, c_idx], '_weight': A[r_idx, c_idx]})
+                            after.append({
+                                'node_id': r_idx,
+                                'cost': 0,
+                                'weight': weight,
+                                '_weight': weight,
+                                '_cnt': A[r_idx, c_idx]
+                            })
                     except (IndexError, TypeError) as e:
-                        after.append({'node_id': r_idx, 'cost': 0, 'weight': A[r_idx, c_idx], '_weight': A[r_idx, c_idx]})
+                        after.append({
+                            'node_id': r_idx,
+                            'cost': 0,
+                            'weight': weight,
+                            '_weight': weight,
+                                '_cnt': A[r_idx, c_idx]
+                        })
 
             if len(after) > 0 or labels[c_idx][0] == 0:
                 dict_spec[c_idx] = {'payoff': 0, 'after': after}
@@ -108,8 +132,14 @@ class Graph(object):
         dict_spec[-1] = {'after': [], 'payoff': 0}
         for k in dict_spec.keys():
             if k != -1 and len(dict_spec[k].get('after', [])) == 0:
-                # TODO: weight should be the sum of all downstream leaves.
-                dict_spec[k]['after'] = [{'node_id': -1, 'weight': 9, 'cost': 0}]
+                # the weight is the sum of all _cnt values that follow this node
+                weight = 0
+                for node in dict_spec.keys():
+                    for a in dict_spec[node].get('after', []):
+                        if a.get('node_id', None) == k:
+                            weight += a.get('_cnt', 0)
+
+                dict_spec[k]['after'] = [{'node_id': -1, 'weight': weight, 'cost': 0}]
 
         return self.from_dict(dict_spec)
 
