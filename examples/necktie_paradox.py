@@ -1,9 +1,9 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.style
-matplotlib.style.use('ggplot')
 import pandas as pd
 from petersburg import Graph
+import matplotlib.pyplot as plt
+import matplotlib.style
+
+matplotlib.style.use('ggplot')
 
 __author__ = 'willmcginnis'
 

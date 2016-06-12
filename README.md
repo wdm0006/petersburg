@@ -7,30 +7,32 @@ author: Will McGinnis
 Overview
 ========
 
-A simple framework for analyzing decision processes as directed graphs. 
+A simple framework for complex decisions.
 
-Simulating uncertain decisions
-------------------------------
+Simulating and Predicting uncertain decisions
+---------------------------------------------
 
-Inspired by the [St. Petersburg paradox](https://en.wikipedia.org/wiki/St._Petersburg_paradox),
-where the expected value of a simple game is infinity, unless reasonable contraints are set (i.e. the bank doesn't have
-and infinite bankroll, you don't have infinite time to play, etc.). The idea is that we can represent decisions and the
-decisions they lead to as directed acyclic graphs, wherein the nodes have payoffs, edges have costs, and at each node, 
-the edge to progress on to is selected at random (with weights). 
+Petersburg is a framework based on the decision theoretic concept of an individual agent approaching a network
+of discrete decisions or probabilistic options. We model these networks as directed acyclic graphs that have a 
+ few extra concepts:
  
-With such a graph assembled, we can simulate the different first choices to see what the expected (simulated) outcome of 
-each is.
+ * Node Payoff: a potential reward for reaching some point
+ * Edge Cost: a cost of taking a certain path
+ * Edge Weight: a term related to the conditional likelihood of that edge being traversed (either a static number of classification model)
 
-Future goals
-------------
+Using petersburg, you can:
 
-In the future the plan is to add things like extremely rare and extreme events at each node (i.e. unknown unknowns, or 
-black swans), more complex switching logic at nodes than weighted random, more complex cost and payoff models (utility),
-and better methods for building complex graphs.
-
-The first outcome will be more detailed metrics on the simulated outcomes than just mean (simulated expected value). Of 
-course a positive expected value with extremely high risk is different than the same expected value without. We'd love 
-to capture that concisely. 
+ * Build graphs for a problem and understand
+    * The most likely outcomes
+    * The worst/best case scenarios
+    * The choices or events which impact the outcome the most
+    * The highest or most optimal costs for an edge
+ * Build graphs for a problem and predict
+    * Most likely outcome given some feature data with high accuracy even if intermediate decisions aren't well defined
+    * Distributions of outcomes
+    * Build static graphs from classifier based models and a sample of new data to perform the above analyses 
+    
+All in all, it's pretty neat.
 
 Installation / Usage
 ====================
@@ -50,8 +52,8 @@ Contributing
 
 TBD
 
-Example
-=======
+Example Static Graph
+====================
 
 Here is a simple example of simulating the St. Petersburg Paradox game, with some slight variations. In this case the 
 entrance fee is $10, and the game only has a maximum of 10,000 flips and is played 10,000,000 times.
@@ -84,3 +86,12 @@ entrance fee is $10, and the game only has a maximum of 10,000 flips and is play
 Via simulation, the outcome of this is a profit of: $197,592,288.  This will, of course, vary depending on the run, but
 will approach infinity as the number of games goes to infinity, regardless of cost-to-play.
 
+Example Prediction
+==================
+
+There are two prediction objects, both of which are scikit-learn style classes. 
+
+ * MixedModeEstimator
+ * FrequencyEstimator
+ 
+Both have full working examples in the examples/estimation/* directory.

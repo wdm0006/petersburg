@@ -1,7 +1,7 @@
 import numpy as np
 import random
 import json
-from petersburg import MixedModeEstimator
+from petersburg import FrequencyEstimator
 
 __author__ = 'willmcginnis'
 
@@ -37,13 +37,13 @@ def make_data(n_samples=10000):
     for _ in range(n_samples):
         if random.random() < _chance_of_percip:
             if random.random() < _chance_of_heavy:
-                y.append([0, 1, 1])
+                y.append([0, 0, 0])
                 X.append([random.random() + 10 for _ in range(20)] + [random.random() * 0.2 + 1.1])
             else:
-                y.append([0, 1, 2])
+                y.append([0, 0, 1])
                 X.append([random.random() + 25 for _ in range(20)] + [random.random() * 0.2 + 2.1])
         else:
-            y.append([0, 0, 0])
+            y.append([0, 1, 2])
             X.append([random.random() - 10 for _ in range(20)] + [random.random() * 0.2 - 2.0])
 
     return np.array(X), np.array(y)
@@ -68,7 +68,7 @@ def validate(y, categories, truth):
 if __name__ == '__main__':
     # train a frequency estimator
     X, y = make_data(n_samples=100000)
-    clf = MixedModeEstimator(verbose=True)
+    clf = FrequencyEstimator(verbose=True, num_simulations=1)
     clf.fit(X, y)
 
     X_test, y_test = make_data(n_samples=10000)
