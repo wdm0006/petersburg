@@ -53,10 +53,16 @@ class Graph(object):
         :return:
         """
 
+        # here we iterate through the dictionary and instantiate all of the node objects specified. One of them (and
+        # exactly one of them), should be after nothing, and is the starting node, the rest go into a node list. Edges
+        # are handled later.
         node = None
         node_list = {}
         for key in d:
-            if d[key]['after'] == []:
+            if not d[key]['after']:
+                if node is not None:
+                    raise AttributeError('Graph cannot have more than one starting node.')
+
                 node = Node(key, payoff=d[key].get('payoff', 0))
                 node_list.update({key: node})
             else:
@@ -65,11 +71,20 @@ class Graph(object):
         if node is None:
             raise AttributeError('Dict must contain a starting node (empty list for after key)')
 
+        # the start node is the entry point for basically everything we will do later on. It's the only part we actually
+        # need to keep around in the instance here, because all other nodes will be under it via reference once we
+        # process the edges.
         self.start_node = node
 
+        # now that we have a node list, we want to iterate through all of the other nodes, and then through the after
+        # list specified for each, and add the connections that create the graph.
         for key in d:
             for edge in d[key]['after']:
-                node_list[edge['node_id']].add_outcome(node_list[key], cost=edge.get('cost', 0), weight=edge.get('weight', 1))
+                node_list[edge['node_id']].add_outcome(
+                    node_list[key],
+                    cost=edge.get('cost', 0),
+                    weight=edge.get('weight', 1)
+                )
 
         return self
 
@@ -82,7 +97,7 @@ class Graph(object):
         """
 
         if labels is None:
-            labels = [(1, 1) for x in range(A.shape[0])]
+            labels = [(1, 1) for _ in range(A.shape[0])]
             labels[0] = (0, 0)
 
         if A.shape[0] != A.shape[1]:
@@ -210,12 +225,32 @@ class Graph(object):
 
         return self.start_node.to_tree()
 
-    def to_dict_of_dicts(self):
+    def to_networkx(self):
         """
 
         :return:
         """
-        return self.start_node.get_edges(set())
+        try:
+            import networkx as nx
+        except ImportError as e:
+            raise ImportError('the to networkx function requires networkx')
+
+        g = nx.DiGraph()
+
+        # first make a node id: obj mapping and add nodes to the graph
+        node_to_node_id = dict([(node, node.node_id) for node in self.node_list()])
+        nodes = list(node_to_node_id.values())
+        g.add_nodes_from(nodes)
+
+        # now iterate through and add in our edges using that mapping
+        edges = list(self.edge_list())
+        for edge in edges:
+            from_node_id = node_to_node_id.get(edge.from_node)
+            to_node_id = node_to_node_id.get(edge.to_node)
+            cost = edge.cost
+            g.add_edge(from_node_id, to_node_id, weight=cost)
+
+        return g
 
     def edge_list(self):
         return self.start_node.get_edges(set())
@@ -223,15 +258,40 @@ class Graph(object):
     def node_list(self):
         return self.start_node.get_nodes(set())
 
-    def plot(self):
+    def plot(self, filename):
         """
         :return:
         """
 
+        g = self.to_networkx()
+        self.graph_draw(g, filename)
+
+    @staticmethod
+    def graph_draw(g, filename):
         try:
             import networkx as nx
+            import pygraphviz
             import matplotlib.pyplot as plt
         except ImportError as e:
-            raise ImportError('the plot function requires networkx and matplotlib')
+            raise ImportError('the plot function requires networkx and pygraphviz')
 
-        return None
+        # pure graphviz
+        # A = nx.to_agraph(g)
+        # A.layout(
+        #     'dot',
+        #     args='-Nfontsize=10 -Nwidth=".2" -Nheight=".2" -Nmargin=0 -Gfontsize=8'
+        # )
+        # A.draw(filename)
+
+        # bastardization
+        plt.figure()
+        pos = nx.pygraphviz_layout(
+            g,
+            prog='dot',
+            args='-Nfontsize=10 -Nwidth=".2" -Nheight=".2" -Nmargin=0 -Gfontsize=8'
+        )
+        nx.draw(g, pos=pos)
+        # edge_labels = nx.get_edge_attributes(g, 'weight')
+        # print(edge_labels)
+        # nx.draw_networkx_edge_labels(g, pos, labels=edge_labels)
+        plt.show()

@@ -1,5 +1,5 @@
 from petersburg import Graph
-import json
+import os
 
 __author__ = 'willmcginnis'
 
@@ -27,4 +27,4 @@ if __name__ == '__main__':
           13: {'payoff': 0, 'after': [{'node_id': 10, 'cost': 0}]},
     })
 
-    print(g.to_dict_of_dicts())
+    g.plot(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'img', 'print.png'))
