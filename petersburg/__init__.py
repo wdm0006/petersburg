@@ -9,14 +9,8 @@
 """
 
 from petersburg.edges import Edge
-from petersburg.nodes import Node
-from petersburg.graph import Graph
 from petersburg.estimators import FrequencyEstimator, MixedModeEstimator
+from petersburg.graph import Graph
+from petersburg.nodes import Node
 
-__all__ = [
-    'Node',
-    'MixedModeEstimator',
-    'Graph',
-    'Edge',
-    'FrequencyEstimator'
-]
+__all__ = ["Node", "MixedModeEstimator", "Graph", "Edge", "FrequencyEstimator"]

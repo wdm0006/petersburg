@@ -8,14 +8,14 @@
 
 """
 
-import json
 import numpy as np
-from petersburg import Node
 
-__author__ = 'willmcginnis'
+from petersburg.nodes import Node
+
+__author__ = "willmcginnis"
 
 
-class Graph(object):
+class Graph:
     """
     A graph holds a heirarchy of nodes and edges with payoffs and costs.
 
@@ -40,6 +40,7 @@ class Graph(object):
     can only be one, is represented by an empty list in the 'after' key of a node.
 
     """
+
     def __init__(self):
         self.start_node = None
 
@@ -59,17 +60,17 @@ class Graph(object):
         node = None
         node_list = {}
         for key in d:
-            if not d[key]['after']:
+            if not d[key]["after"]:
                 if node is not None:
-                    raise AttributeError('Graph cannot have more than one starting node.')
+                    raise AttributeError("Graph cannot have more than one starting node.")
 
-                node = Node(key, payoff=d[key].get('payoff', 0))
+                node = Node(key, payoff=d[key].get("payoff", 0))
                 node_list.update({key: node})
             else:
-                node_list.update({key: Node(key, payoff=d[key].get('payoff', 0))})
+                node_list.update({key: Node(key, payoff=d[key].get("payoff", 0))})
 
         if node is None:
-            raise AttributeError('Dict must contain a starting node (empty list for after key)')
+            raise AttributeError("Dict must contain a starting node (empty list for after key)")
 
         # the start node is the entry point for basically everything we will do later on. It's the only part we actually
         # need to keep around in the instance here, because all other nodes will be under it via reference once we
@@ -79,11 +80,9 @@ class Graph(object):
         # now that we have a node list, we want to iterate through all of the other nodes, and then through the after
         # list specified for each, and add the connections that create the graph.
         for key in d:
-            for edge in d[key]['after']:
-                node_list[edge['node_id']].add_outcome(
-                    node_list[key],
-                    cost=edge.get('cost', 0),
-                    weight=edge.get('weight', 1)
+            for edge in d[key]["after"]:
+                node_list[edge["node_id"]].add_outcome(
+                    node_list[key], cost=edge.get("cost", 0), weight=edge.get("weight", 1)
                 )
 
         return self
@@ -101,7 +100,7 @@ class Graph(object):
             labels[0] = (0, 0)
 
         if A.shape[0] != A.shape[1]:
-            raise ValueError('Adjanceny Matrix must be square')
+            raise ValueError("Adjanceny Matrix must be square")
 
         dict_spec = {}
         for c_idx in range(A.shape[1]):
@@ -116,45 +115,51 @@ class Graph(object):
                     try:
                         clf = clf_matrix[r_idx][c_idx]
                         if clf is not None:
-                            after.append({
-                                'node_id': r_idx,
-                                'cost': 0,
-                                'weight': clf,
-                                '_weight': weight,
-                                '_cnt': A[r_idx, c_idx]
-                            })
+                            after.append(
+                                {
+                                    "node_id": r_idx,
+                                    "cost": 0,
+                                    "weight": clf,
+                                    "_weight": weight,
+                                    "_cnt": A[r_idx, c_idx],
+                                }
+                            )
                         else:
-                            after.append({
-                                'node_id': r_idx,
-                                'cost': 0,
-                                'weight': weight,
-                                '_weight': weight,
-                                '_cnt': A[r_idx, c_idx]
-                            })
-                    except (IndexError, TypeError) as e:
-                        after.append({
-                            'node_id': r_idx,
-                            'cost': 0,
-                            'weight': weight,
-                            '_weight': weight,
-                                '_cnt': A[r_idx, c_idx]
-                        })
+                            after.append(
+                                {
+                                    "node_id": r_idx,
+                                    "cost": 0,
+                                    "weight": weight,
+                                    "_weight": weight,
+                                    "_cnt": A[r_idx, c_idx],
+                                }
+                            )
+                    except (IndexError, TypeError):
+                        after.append(
+                            {
+                                "node_id": r_idx,
+                                "cost": 0,
+                                "weight": weight,
+                                "_weight": weight,
+                                "_cnt": A[r_idx, c_idx],
+                            }
+                        )
 
             if len(after) > 0 or labels[c_idx][0] == 0:
-                dict_spec[c_idx] = {'payoff': 0, 'after': after}
+                dict_spec[c_idx] = {"payoff": 0, "after": after}
 
         # add in root node (super hacky)
-        dict_spec[-1] = {'after': [], 'payoff': 0}
+        dict_spec[-1] = {"after": [], "payoff": 0}
         for k in dict_spec.keys():
-            if k != -1 and len(dict_spec[k].get('after', [])) == 0:
+            if k != -1 and len(dict_spec[k].get("after", [])) == 0:
                 # the weight is the sum of all _cnt values that follow this node
                 weight = 0
                 for node in dict_spec.keys():
-                    for a in dict_spec[node].get('after', []):
-                        if a.get('node_id', None) == k:
-                            weight += a.get('_cnt', 0)
+                    for a in dict_spec[node].get("after", []):
+                        if a.get("node_id", None) == k:
+                            weight += a.get("_cnt", 0)
 
-                dict_spec[k]['after'] = [{'node_id': -1, 'weight': weight, 'cost': 0}]
+                dict_spec[k]["after"] = [{"node_id": -1, "weight": weight, "cost": 0}]
 
         return self.from_dict(dict_spec)
 
@@ -205,16 +210,18 @@ class Graph(object):
                 payoff, cost = outcome[0].get_outcome()
                 out.append(payoff - cost - outcome[0].cost)
             if not extended_stats:
-                choice.update({outcome[0].to_node.node_id: float(sum(out))/len(out)})
+                choice.update({outcome[0].to_node.node_id: float(sum(out)) / len(out)})
             else:
-                choice.update({
-                    outcome[0].to_node.node_id: {
-                        'mean': float(sum(out))/len(out),
-                        'max': max(out),
-                        'min': min(out),
-                        'count': len(out),
+                choice.update(
+                    {
+                        outcome[0].to_node.node_id: {
+                            "mean": float(sum(out)) / len(out),
+                            "max": max(out),
+                            "min": min(out),
+                            "count": len(out),
+                        }
                     }
-                })
+                )
         return choice
 
     def to_tree(self):
@@ -232,8 +239,8 @@ class Graph(object):
         """
         try:
             import networkx as nx
-        except ImportError as e:
-            raise ImportError('the to networkx function requires networkx')
+        except ImportError:
+            raise ImportError("the to networkx function requires networkx")
 
         g = nx.DiGraph()
 
@@ -258,6 +265,359 @@ class Graph(object):
     def node_list(self):
         return self.start_node.get_nodes(set())
 
+    def to_mermaid(self, orientation="LR", max_nodes=50):
+        """
+        Export the graph to Mermaid diagram syntax.
+
+        :param orientation: Graph orientation ('LR' for left-right, 'TD' for top-down)
+        :param max_nodes: Maximum number of nodes to include (for large graphs)
+        :return: String containing Mermaid diagram syntax
+        """
+        lines = [f"graph {orientation}"]
+
+        # Get all nodes and edges
+        nodes = list(self.node_list())
+        edges = list(self.edge_list())
+
+        # Limit nodes if graph is too large
+        if len(nodes) > max_nodes:
+            nodes = nodes[:max_nodes]
+            edges = [e for e in edges if e.from_node in nodes and e.to_node in nodes]
+
+        # Create node ID to display mapping
+        node_to_id = {node: node.node_id for node in nodes}
+
+        # Add node definitions with payoffs
+        for node in nodes:
+            node_id = node_to_id[node]
+
+            # Check if this is the start node
+            if node == self.start_node:
+                lines.append(f"    {node_id}((Start))")
+            elif node.payoff != 0:
+                label = f"Node {node_id}<br/>Payoff: ${node.payoff}"
+                lines.append(f'    {node_id}["{label}"]')
+            elif len(node.outcomes) == 0:
+                # Terminal/leaf node
+                lines.append(f"    {node_id}[End]")
+            else:
+                lines.append(f"    {node_id}[Node {node_id}]")
+
+        # Add edges with costs and weights
+        for edge in edges:
+            from_id = node_to_id.get(edge.from_node)
+            to_id = node_to_id.get(edge.to_node)
+
+            if from_id is None or to_id is None:
+                continue
+
+            # Build edge label
+            label_parts = []
+            if edge.cost != 0:
+                label_parts.append(f"Cost: ${edge.cost}")
+
+            # Try to get weight from edge (it's stored in the from_node's outcomes)
+            weight = None
+            for outcome_edge, w in edge.from_node.outcomes:
+                if outcome_edge == edge:
+                    if isinstance(w, (int, float)):
+                        weight = w
+                    break
+
+            if weight is not None and weight != 1.0:
+                label_parts.append(f"P: {weight:.2f}")
+
+            if label_parts:
+                label = " | ".join(label_parts)
+                lines.append(f"    {from_id} -->|{label}| {to_id}")
+            else:
+                lines.append(f"    {from_id} --> {to_id}")
+
+        # Add styling
+        lines.append("")
+        lines.append("    classDef terminal fill:#e1f5e1")
+        lines.append("    classDef payoff fill:#fff4e1")
+        lines.append("    class 0 terminal")
+
+        # Mark nodes with payoffs
+        for node in nodes:
+            if node.payoff > 0:
+                lines.append(f"    class {node_to_id[node]} payoff")
+
+        return "\n".join(lines)
+
+    def analyze_sensitivity(
+        self, parameter_type="edge_weights", num_simulations=1000, perturbation=0.1, max_params=10
+    ):
+        """
+        Automatically analyze sensitivity of outcomes to graph parameters.
+
+        This method identifies which parameters (edge weights, costs, or payoffs) have
+        the most impact on expected outcomes.
+
+        :param parameter_type: Type of parameter to analyze ('edge_weights', 'costs', or 'payoffs')
+        :param num_simulations: Number of Monte Carlo simulations per parameter value
+        :param perturbation: How much to vary parameters (e.g., 0.1 = ±10%)
+        :param max_params: Maximum number of parameters to analyze
+        :return: Dictionary with sensitivity results sorted by impact
+        """
+        import numpy as np
+
+        # Get baseline expected value
+        baseline_outcomes = []
+        for _ in range(num_simulations):
+            baseline_outcomes.append(self.get_outcome())
+        baseline_ev = np.mean(baseline_outcomes)
+
+        sensitivity_results = []
+
+        if parameter_type == "edge_weights":
+            # Analyze each edge's weight sensitivity
+            edges = list(self.edge_list())
+            edges_to_test = edges[:max_params] if len(edges) > max_params else edges
+
+            for edge in edges_to_test:
+                # Find the weight for this edge in the from_node's outcomes
+                original_weight = None
+                edge_index = None
+
+                for idx, (outcome_edge, w) in enumerate(edge.from_node.outcomes):
+                    if outcome_edge == edge:
+                        if isinstance(w, (int, float)):
+                            original_weight = w
+                            edge_index = idx
+                            break
+
+                if original_weight is None or original_weight == 0:
+                    continue  # Skip edges without numeric weights
+
+                # Test increased weight
+                edge.from_node.outcomes[edge_index] = (edge, original_weight * (1 + perturbation))
+                increased_outcomes = []
+                for _ in range(num_simulations):
+                    increased_outcomes.append(self.get_outcome())
+                increased_ev = np.mean(increased_outcomes)
+
+                # Test decreased weight
+                edge.from_node.outcomes[edge_index] = (
+                    edge,
+                    max(0.01, original_weight * (1 - perturbation)),
+                )
+                decreased_outcomes = []
+                for _ in range(num_simulations):
+                    decreased_outcomes.append(self.get_outcome())
+                decreased_ev = np.mean(decreased_outcomes)
+
+                # Restore original weight
+                edge.from_node.outcomes[edge_index] = (edge, original_weight)
+
+                # Calculate sensitivity (average absolute change in EV)
+                sensitivity = (
+                    abs(increased_ev - baseline_ev) + abs(decreased_ev - baseline_ev)
+                ) / 2
+
+                sensitivity_results.append(
+                    {
+                        "parameter": f"Edge {edge.from_node.node_id}→{edge.to_node.node_id} weight",
+                        "edge": edge,
+                        "original_value": original_weight,
+                        "baseline_ev": baseline_ev,
+                        "increased_ev": increased_ev,
+                        "decreased_ev": decreased_ev,
+                        "sensitivity": sensitivity,
+                        "elasticity": (sensitivity / baseline_ev) if baseline_ev != 0 else 0,
+                    }
+                )
+
+        elif parameter_type == "costs":
+            # Analyze edge cost sensitivity
+            edges = list(self.edge_list())
+            edges_to_test = edges[:max_params] if len(edges) > max_params else edges
+
+            for edge in edges_to_test:
+                if edge.cost == 0:
+                    continue  # Skip zero-cost edges
+
+                original_cost = edge.cost
+
+                # Test increased cost
+                edge.cost = original_cost * (1 + perturbation)
+                increased_outcomes = []
+                for _ in range(num_simulations):
+                    increased_outcomes.append(self.get_outcome())
+                increased_ev = np.mean(increased_outcomes)
+
+                # Test decreased cost
+                edge.cost = original_cost * (1 - perturbation)
+                decreased_outcomes = []
+                for _ in range(num_simulations):
+                    decreased_outcomes.append(self.get_outcome())
+                decreased_ev = np.mean(decreased_outcomes)
+
+                # Restore original cost
+                edge.cost = original_cost
+
+                sensitivity = (
+                    abs(increased_ev - baseline_ev) + abs(decreased_ev - baseline_ev)
+                ) / 2
+
+                sensitivity_results.append(
+                    {
+                        "parameter": f"Edge {edge.from_node.node_id}→{edge.to_node.node_id} cost",
+                        "edge": edge,
+                        "original_value": original_cost,
+                        "baseline_ev": baseline_ev,
+                        "increased_ev": increased_ev,
+                        "decreased_ev": decreased_ev,
+                        "sensitivity": sensitivity,
+                        "elasticity": (sensitivity / baseline_ev) if baseline_ev != 0 else 0,
+                    }
+                )
+
+        elif parameter_type == "payoffs":
+            # Analyze node payoff sensitivity
+            nodes = list(self.node_list())
+            nodes_to_test = [n for n in nodes if n.payoff != 0][:max_params]
+
+            for node in nodes_to_test:
+                original_payoff = node.payoff
+
+                # Test increased payoff
+                node.payoff = original_payoff * (1 + perturbation)
+                increased_outcomes = []
+                for _ in range(num_simulations):
+                    increased_outcomes.append(self.get_outcome())
+                increased_ev = np.mean(increased_outcomes)
+
+                # Test decreased payoff
+                node.payoff = original_payoff * (1 - perturbation)
+                decreased_outcomes = []
+                for _ in range(num_simulations):
+                    decreased_outcomes.append(self.get_outcome())
+                decreased_ev = np.mean(decreased_outcomes)
+
+                # Restore original payoff
+                node.payoff = original_payoff
+
+                sensitivity = (
+                    abs(increased_ev - baseline_ev) + abs(decreased_ev - baseline_ev)
+                ) / 2
+
+                sensitivity_results.append(
+                    {
+                        "parameter": f"Node {node.node_id} payoff",
+                        "node": node,
+                        "original_value": original_payoff,
+                        "baseline_ev": baseline_ev,
+                        "increased_ev": increased_ev,
+                        "decreased_ev": decreased_ev,
+                        "sensitivity": sensitivity,
+                        "elasticity": (sensitivity / abs(baseline_ev)) if baseline_ev != 0 else 0,
+                    }
+                )
+
+        # Sort by sensitivity (highest impact first)
+        sensitivity_results.sort(key=lambda x: x["sensitivity"], reverse=True)
+
+        return {
+            "baseline_ev": baseline_ev,
+            "parameter_type": parameter_type,
+            "perturbation": perturbation,
+            "results": sensitivity_results,
+        }
+
+    def identify_critical_parameters(self, num_simulations=1000, perturbation=0.1, top_n=5):
+        """
+        Identify the most critical parameters in the graph across all parameter types.
+
+        This is a convenience method that analyzes weights, costs, and payoffs, then
+        returns the top N most impactful parameters regardless of type.
+
+        :param num_simulations: Number of Monte Carlo simulations per parameter
+        :param perturbation: How much to vary parameters (e.g., 0.1 = ±10%)
+        :param top_n: Number of top parameters to return
+        :return: Dictionary with analysis summary and top parameters
+        """
+        all_results = []
+
+        # Analyze all parameter types
+        for param_type in ["edge_weights", "costs", "payoffs"]:
+            analysis = self.analyze_sensitivity(
+                parameter_type=param_type,
+                num_simulations=num_simulations,
+                perturbation=perturbation,
+            )
+            all_results.extend(analysis["results"])
+
+        # Sort all parameters by sensitivity
+        all_results.sort(key=lambda x: x["sensitivity"], reverse=True)
+
+        # Get top N
+        top_parameters = all_results[:top_n]
+
+        return {
+            "baseline_ev": all_results[0]["baseline_ev"] if all_results else 0,
+            "total_parameters_analyzed": len(all_results),
+            "top_parameters": top_parameters,
+        }
+
+    def print_sensitivity_report(self, num_simulations=1000, perturbation=0.1, top_n=5):
+        """
+        Print a formatted sensitivity analysis report.
+
+        :param num_simulations: Number of Monte Carlo simulations per parameter
+        :param perturbation: How much to vary parameters (e.g., 0.1 = ±10%)
+        :param top_n: Number of top parameters to display
+        """
+        print("=" * 80)
+        print("AUTOMATIC SENSITIVITY ANALYSIS")
+        print("=" * 80)
+        print()
+
+        results = self.identify_critical_parameters(
+            num_simulations=num_simulations, perturbation=perturbation, top_n=top_n
+        )
+
+        print(f"Baseline Expected Value: ${results['baseline_ev']:.2f}")
+        print(f"Total Parameters Analyzed: {results['total_parameters_analyzed']}")
+        print(f"Perturbation: ±{perturbation*100:.0f}%")
+        print(f"Simulations per parameter: {num_simulations:,}")
+        print()
+
+        print(f"Top {top_n} Most Sensitive Parameters:")
+        print("-" * 80)
+        print(f"{'Rank':<6} {'Parameter':<35} {'Sensitivity':<15} {'Elasticity':<12}")
+        print("-" * 80)
+
+        for i, param in enumerate(results["top_parameters"], 1):
+            sensitivity_str = f"${param['sensitivity']:.2f}"
+            elasticity_str = f"{param['elasticity']*100:.1f}%"
+            print(f"{i:<6} {param['parameter']:<35} {sensitivity_str:<15} {elasticity_str:<12}")
+
+        print("-" * 80)
+        print()
+
+        if results["top_parameters"]:
+            top_param = results["top_parameters"][0]
+            print("Key Finding:")
+            print(f"  The most sensitive parameter is: {top_param['parameter']}")
+            print(
+                f"  A {perturbation*100:.0f}% change in this parameter changes EV by ~${top_param['sensitivity']:.2f}"
+            )
+            print(
+                f"  This represents a {top_param['elasticity']*100:.1f}% change in expected value"
+            )
+            print()
+
+            # Provide actionable insight
+            if "weight" in top_param["parameter"].lower():
+                print("  → Focus on improving the probability of this transition")
+            elif "cost" in top_param["parameter"].lower():
+                print("  → Focus on reducing the cost of this step")
+            elif "payoff" in top_param["parameter"].lower():
+                print("  → Focus on increasing the value of this outcome")
+            print()
+
     def plot(self, filename):
         """
         :return:
@@ -269,11 +629,11 @@ class Graph(object):
     @staticmethod
     def graph_draw(g, filename):
         try:
+            import matplotlib.pyplot as plt
             import networkx as nx
             import pygraphviz
-            import matplotlib.pyplot as plt
-        except ImportError as e:
-            raise ImportError('the plot function requires networkx and pygraphviz')
+        except ImportError:
+            raise ImportError("the plot function requires networkx and pygraphviz")
 
         # pure graphviz
         # A = nx.to_agraph(g)
@@ -286,9 +646,7 @@ class Graph(object):
         # bastardization
         plt.figure()
         pos = nx.pygraphviz_layout(
-            g,
-            prog='dot',
-            args='-Nfontsize=10 -Nwidth=".2" -Nheight=".2" -Nmargin=0 -Gfontsize=8'
+            g, prog="dot", args='-Nfontsize=10 -Nwidth=".2" -Nheight=".2" -Nmargin=0 -Gfontsize=8'
         )
         nx.draw(g, pos=pos)
         # edge_labels = nx.get_edge_attributes(g, 'weight')

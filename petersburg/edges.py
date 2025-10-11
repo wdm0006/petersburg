@@ -8,14 +8,15 @@
 
 """
 
-__author__ = 'willmcginnis'
+__author__ = "willmcginnis"
 
 
-class Edge(object):
+class Edge:
     """
     An edge is simply the path from one node to another, with some cost.
 
     """
+
     def __init__(self, from_node, to_node, cost=0):
         self.from_node = from_node
         self.to_node = to_node
@@ -31,4 +32,4 @@ class Edge(object):
         return self.cost
 
     def __repr__(self):
-        return 'Edge: %s -> %s' % (self.from_node.__repr__(), self.to_node.__repr__())
+        return "Edge: %s -> %s" % (self.from_node.__repr__(), self.to_node.__repr__())

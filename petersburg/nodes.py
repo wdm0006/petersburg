@@ -8,18 +8,20 @@
 
 """
 
-from petersburg import Edge
 import random
 
-__author__ = 'willmcginnis'
+from petersburg import Edge
+
+__author__ = "willmcginnis"
 
 
-class Node():
+class Node:
     """
     A node represents a decision point. Once reached it has some payoff (possibly negative or zero), and some model for
     probabilistically picking from a selection of outcomes (edges), or possibly having no outcomes, and being the end
     of the game.
     """
+
     def __init__(self, node_id, payoff=0):
         """
 
@@ -78,7 +80,7 @@ class Node():
         else:
             edge = self.weighted_choice(feature_vector)
             payoff, cost = edge.get_outcome(feature_vector=feature_vector)
-            return payoff, cost + edge.get_cost()
+            return payoff + self.payoff, cost + edge.get_cost()
 
     def get_outcome_node(self, feature_vector=None):
         """
@@ -118,7 +120,11 @@ class Node():
         return edge_list
 
     def __str__(self):
-        return 'Node %s, with payoff %s and outcomes %s' % (str(self.node_id), str(self.payoff), str(self.outcomes))
+        return "Node %s, with payoff %s and outcomes %s" % (
+            str(self.node_id),
+            str(self.payoff),
+            str(self.outcomes),
+        )
 
     def __repr__(self):
         return str(self.node_id)

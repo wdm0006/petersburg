@@ -1,13 +1,17 @@
 petersburg
 ==========
 
-version number: 0.0.1
+![CI](https://github.com/wdm0006/petersburg/workflows/CI/badge.svg)
+![Python Versions](https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)
+![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)
+
+version number: 0.1.0
 author: Will McGinnis
 
 Overview
 ========
 
-A simple framework for complex decisions.
+A framework for analyzing probabilistic decision processes as directed graphs with automatic sensitivity analysis.
 
 Simulating and Predicting uncertain decisions
 ---------------------------------------------
@@ -22,35 +26,136 @@ of discrete decisions or probabilistic options. We model these networks as direc
 
 Using petersburg, you can:
 
- * Build graphs for a problem and understand
+ * **Build and simulate** complex decision graphs
     * The most likely outcomes
     * The worst/best case scenarios
-    * The choices or events which impact the outcome the most
-    * The highest or most optimal costs for an edge
- * Build graphs for a problem and predict
-    * Most likely outcome given some feature data with high accuracy even if intermediate decisions aren't well defined
-    * Distributions of outcomes
-    * Build static graphs from classifier based models and a sample of new data to perform the above analyses 
+    * Distributions of outcomes through Monte Carlo simulation
+ * **Automatic sensitivity analysis** - identify which parameters impact outcomes the most
+ * **Visualize** decision graphs with Mermaid diagram export
+ * **Predict** outcomes using machine learning
+    * FrequencyEstimator: Learn graph structure from historical data
+    * MixedModeEstimator: Combine explicit structure with learned probabilities
+ * **Real-world applications** (see examples/case_studies/)
+    * Drug development pipelines
+    * Startup funding journeys
+    * Product launches
+    * Litigation strategy
+
+Installation
+============
+
+### Using pip
+
+```bash
+pip install petersburg
+```
+
+### From source (recommended for development)
+
+```bash
+git clone https://github.com/wdm0006/petersburg.git
+cd petersburg
+uv pip install -e ".[dev]"
+```
+
+Or using standard pip:
+
+```bash
+pip install -e ".[dev]"
+```
+
+Quick Start
+===========
+
+### Basic Graph Simulation
+
+```python
+from petersburg import Graph
+
+# Build a simple decision graph
+g = Graph()
+g.from_dict({
+    0: {'payoff': 0, 'after': []},  # Terminal node
+    1: {'payoff': 100, 'after': [{'node_id': 0, 'cost': 10, 'weight': 1.0}]},  # Success
+    2: {'payoff': -50, 'after': [{'node_id': 0, 'cost': 5, 'weight': 1.0}]},   # Failure
+    3: {'payoff': 0, 'after': [
+        {'node_id': 1, 'cost': 0, 'weight': 0.3},  # 30% success
+        {'node_id': 2, 'cost': 0, 'weight': 0.7},  # 70% failure
+    ]},  # Starting node
+})
+
+# Run simulation
+outcomes = [g.get_outcome() for _ in range(10000)]
+print(f"Expected value: ${sum(outcomes)/len(outcomes):.2f}")
+```
+
+### Automatic Sensitivity Analysis
+
+```python
+# Identify the most critical parameters
+g.print_sensitivity_report(num_simulations=1000, perturbation=0.1, top_n=5)
+```
+
+### Export to Mermaid Diagram
+
+```python
+# Generate a Mermaid diagram for visualization
+mermaid_code = g.to_mermaid()
+print(mermaid_code)
+```
     
-All in all, it's pretty neat.
+Case Studies
+============
 
-Installation / Usage
-====================
+See [examples/case_studies/](examples/case_studies/) for detailed real-world applications:
 
-To install use pip:
+- **Drug Development**: Pharmaceutical R&D pipeline with Phase I-III trials
+- **Startup Funding**: VC funding journey from pre-seed to exit
+- **Product Launch**: New product introduction with market testing
+- **Litigation Strategy**: Settlement vs. trial decision analysis
 
-    $ pip install petersburg
+Each case study includes:
+- Detailed markdown documentation with business context
+- Python implementation with the petersburg framework
+- Mermaid diagrams visualizing the decision flow
+- Sensitivity analysis identifying critical parameters
 
+Development
+===========
 
-Or clone the repo:
+### Running Tests
 
-    $ git clone https://github.com/wdm0006/petersburg.git
-    $ python setup.py install
-    
+```bash
+uv run pytest
+```
+
+### Code Quality
+
+```bash
+# Format code
+uv run black petersburg/ tests/ examples/
+
+# Lint
+uv run ruff check petersburg/ tests/ examples/
+
+# Type check
+uv run mypy petersburg/
+```
+
+### Running Examples
+
+```bash
+# Run all examples
+make examples
+
+# Run all case studies
+make case-studies
+```
+
 Contributing
 ============
 
-TBD
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
 Example Static Graph
 ====================

@@ -1,13 +1,15 @@
-import numpy as np
-import random
 import json
+import random
+
+import numpy as np
+
 from petersburg import MixedModeEstimator
 
-__author__ = 'willmcginnis'
+__author__ = "willmcginnis"
 
 
 def make_data(n_samples=10000):
-    """
+    r"""
     Creates a sample hierarchical weather dataset with the graph form:
 
 
@@ -52,7 +54,9 @@ def make_data(n_samples=10000):
 def validate(y, categories, truth):
     t = 0
     f = 0
-    y = y.reshape(-1, ).tolist()
+    y = y.reshape(
+        -1,
+    ).tolist()
     final_idx = len(truth[0]) - 1
     for idx in range(len(truth)):
         truth_tuple = (final_idx, truth[idx][-1])
@@ -65,7 +69,8 @@ def validate(y, categories, truth):
 
     return t / (t + f)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # train a frequency estimator
     X, y = make_data(n_samples=100000)
     clf = MixedModeEstimator(verbose=True)
@@ -75,18 +80,29 @@ if __name__ == '__main__':
     y_hat = clf.predict(X_test)
 
     # print out what we've learned from it
-    print('\nCategory Labels')
+    print("\nCategory Labels")
     labels = clf._cateogry_labels
     print(labels)
 
-    print('\nUnique Predicted Outcomes')
-    outcomes = sorted([str(labels[int(x)]) for x in set(y_hat.reshape(-1, ).tolist())])
+    print("\nUnique Predicted Outcomes")
+    outcomes = sorted(
+        [
+            str(labels[int(x)])
+            for x in set(
+                y_hat.reshape(
+                    -1,
+                ).tolist()
+            )
+        ]
+    )
     print(outcomes)
 
-    print('\nHistogram')
-    histogram = dict(zip(outcomes, [float(x) for x in np.histogram(y_hat, bins=[2.5, 3.5, 4.5, 5.5])[0]]))
+    print("\nHistogram")
+    histogram = dict(
+        zip(outcomes, [float(x) for x in np.histogram(y_hat, bins=[2.5, 3.5, 4.5, 5.5])[0]])
+    )
     print(json.dumps(histogram, sort_keys=True, indent=4))
 
     accuracy = validate(y_hat, labels, y_test)
-    print('\nOverall Accuracy')
-    print('%9.5f%%' % (accuracy * 100.0, ))
+    print("\nOverall Accuracy")
+    print("%9.5f%%" % (accuracy * 100.0,))
