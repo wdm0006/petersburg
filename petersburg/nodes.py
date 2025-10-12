@@ -9,6 +9,7 @@
 """
 
 import random
+import numpy as np
 
 from petersburg import Edge
 
@@ -31,6 +32,15 @@ class Node:
         self.node_id = node_id
         self.payoff = payoff
         self.outcomes = []
+
+    def sample_payoff(self):
+        """
+        Returns the payoff for this node. For base Node class, this is just the fixed payoff.
+        Subclasses can override this to provide stochastic payoffs.
+
+        :return: float
+        """
+        return self.payoff
 
     def add_outcome(self, node, cost=0, weight=1, classifier=None):
         """
@@ -76,11 +86,11 @@ class Node:
         """
 
         if self.outcomes == []:
-            return self.payoff, 0
+            return self.sample_payoff(), 0
         else:
             edge = self.weighted_choice(feature_vector)
             payoff, cost = edge.get_outcome(feature_vector=feature_vector)
-            return payoff + self.payoff, cost + edge.get_cost()
+            return payoff + self.sample_payoff(), cost + edge.get_cost()
 
     def get_outcome_node(self, feature_vector=None):
         """
@@ -128,3 +138,119 @@ class Node:
 
     def __repr__(self):
         return str(self.node_id)
+
+
+class UniformNode(Node):
+    """
+    A node with payoffs drawn from a continuous uniform distribution.
+
+    Each time this node is reached, the payoff is sampled uniformly from [min_payoff, max_payoff].
+    """
+
+    def __init__(self, node_id, min_payoff, max_payoff):
+        """
+        Initialize a UniformNode with a uniform distribution range.
+
+        :param node_id: Unique identifier for this node
+        :param min_payoff: Minimum payoff value (inclusive)
+        :param max_payoff: Maximum payoff value (inclusive)
+        """
+        super().__init__(node_id, payoff=(min_payoff + max_payoff) / 2)
+        self.min_payoff = min_payoff
+        self.max_payoff = max_payoff
+
+    def sample_payoff(self):
+        """
+        Sample a payoff from the uniform distribution.
+
+        :return: float drawn from uniform[min_payoff, max_payoff]
+        """
+        return np.random.uniform(self.min_payoff, self.max_payoff)
+
+
+class GaussianNode(Node):
+    """
+    A node with payoffs drawn from a Gaussian (normal) distribution.
+
+    Each time this node is reached, the payoff is sampled from N(mean, std^2).
+    """
+
+    def __init__(self, node_id, mean, std):
+        """
+        Initialize a GaussianNode with normal distribution parameters.
+
+        :param node_id: Unique identifier for this node
+        :param mean: Mean of the normal distribution
+        :param std: Standard deviation of the normal distribution
+        """
+        super().__init__(node_id, payoff=mean)
+        self.mean = mean
+        self.std = std
+
+    def sample_payoff(self):
+        """
+        Sample a payoff from the Gaussian distribution.
+
+        :return: float drawn from N(mean, std^2)
+        """
+        return np.random.normal(self.mean, self.std)
+
+
+class LogNormalNode(Node):
+    """
+    A node with payoffs drawn from a log-normal distribution.
+
+    Each time this node is reached, the payoff is sampled from LogNormal(mu, sigma^2).
+    The log-normal distribution is useful for modeling variables that are products of many
+    independent random variables, and is always positive.
+    """
+
+    def __init__(self, node_id, mu, sigma):
+        """
+        Initialize a LogNormalNode with log-normal distribution parameters.
+
+        :param node_id: Unique identifier for this node
+        :param mu: Mean of the underlying normal distribution (not the mean of the log-normal!)
+        :param sigma: Standard deviation of the underlying normal distribution
+        """
+        super().__init__(node_id, payoff=np.exp(mu + sigma**2 / 2))
+        self.mu = mu
+        self.sigma = sigma
+
+    def sample_payoff(self):
+        """
+        Sample a payoff from the log-normal distribution.
+
+        :return: float drawn from LogNormal(mu, sigma^2)
+        """
+        return np.random.lognormal(self.mu, self.sigma)
+
+
+class PowerLawNode(Node):
+    """
+    A node with payoffs drawn from a power law (Pareto) distribution.
+
+    Each time this node is reached, the payoff is sampled from a Pareto distribution.
+    Power law distributions are useful for modeling phenomena with heavy tails, such as
+    wealth distributions, popularity, and rare high-value events.
+    """
+
+    def __init__(self, node_id, scale, alpha):
+        """
+        Initialize a PowerLawNode with Pareto distribution parameters.
+
+        :param node_id: Unique identifier for this node
+        :param scale: Scale parameter (minimum possible value)
+        :param alpha: Shape parameter (controls tail heaviness, alpha > 1)
+        """
+        super().__init__(node_id, payoff=scale * alpha / (alpha - 1) if alpha > 1 else scale * 2)
+        self.scale = scale
+        self.alpha = alpha
+
+    def sample_payoff(self):
+        """
+        Sample a payoff from the power law distribution.
+
+        :return: float drawn from Pareto(scale, alpha)
+        """
+        return (np.random.pareto(self.alpha) + 1) * self.scale

@@ -30,6 +30,11 @@ Using petersburg, you can:
     * The most likely outcomes
     * The worst/best case scenarios
     * Distributions of outcomes through Monte Carlo simulation
+ * **Model uncertainty** with distribution-based node types
+    * UniformNode: Outcomes uniformly distributed in a range
+    * GaussianNode: Normally distributed outcomes
+    * LogNormalNode: Log-normal distributions (always positive, heavy right tail)
+    * PowerLawNode: Power law distributions for rare high-value events
  * **Automatic sensitivity analysis** - identify which parameters impact outcomes the most
  * **Visualize** decision graphs with Mermaid diagram export
  * **Predict** outcomes using machine learning
@@ -40,6 +45,77 @@ Using petersburg, you can:
     * Startup funding journeys
     * Product launches
     * Litigation strategy
+
+## Emergent Complexity: Start Simple, Grow Sophisticated
+
+One of petersburg's core design principles is **progressive refinement**: you can start with a simplified model that captures the basic structure of a complex system, then gradually add realism as your understanding deepens or your data improves.
+
+### The Incremental Modeling Approach
+
+**Stage 1: Fixed Payoffs** - Begin with deterministic outcomes to understand the structure
+```python
+# Simple model: Fixed $5B blockbuster exit
+{'payoff': 5000, 'after': [...]}
+```
+
+**Stage 2: Distribution-Based Nodes** - Add realistic uncertainty to outcomes
+```python
+# More realistic: LogNormal distribution around $5B
+{'type': 'lognormal', 'mu': 8.52, 'sigma': 0.4, 'after': [...]}
+```
+
+**Stage 3: Learned Transitions** - Use historical data to set edge probabilities
+```python
+# Edge weights learned from data
+from petersburg import FrequencyEstimator
+estimator = FrequencyEstimator()
+estimator.fit(X_features, y_outcomes)
+```
+
+**Stage 4: Dynamic Edge Weights** - Transitions depend on context/features
+```python
+# Edge weights predicted by classifier based on features
+{'node_id': 2, 'cost': 100, 'weight': trained_classifier}
+```
+
+### Emergent Power Laws from Simple Compositions
+
+A remarkable property of petersburg models is that **simple binary transitions + continuous distributions = complex emergent behavior** that matches real-world power laws.
+
+For example, in our startup funding case study:
+- Binary decisions at each stage (continue/exit/fail)
+- LogNormal distributions at exit nodes
+- Simple stage-by-stage filtering
+
+This produces a portfolio outcome distribution that exhibits:
+- Heavy right tails (rare mega-exits)
+- Realistic failure rates (80%+ fail)
+- Power law returns matching empirical VC data
+
+**You don't need to explicitly model power law complexity.** By composing:
+1. Sequential filtering (survival rates at each stage)
+2. Multiplicative processes (ownership dilution)
+3. Log-normal outcomes (valuation distributions)
+
+...the framework naturally generates the complex emergent patterns we observe in real venture portfolios, pharmaceutical pipelines, and product launches.
+
+### When to Add Complexity
+
+Use this decision framework:
+
+| Model Stage | Use When | Example |
+|------------|----------|---------|
+| **Fixed payoffs** | Exploring structure, teaching concepts, rapid prototyping | "What if we add a pilot stage?" |
+| **Distribution nodes** | Modeling real uncertainty, capturing tail risks | "Exit values range from $50M-$500M" |
+| **Frequency estimation** | Have historical transition data, want empirical probabilities | "Learn success rates from past 100 drugs" |
+| **Mixed-mode with classifiers** | Outcomes depend on features, sufficient training data | "Success rate varies by team experience, market size" |
+
+**Start simple. Add complexity only when:**
+- Sensitivity analysis shows a parameter matters
+- You have data to support more sophisticated modeling
+- Simpler models produce unrealistic outcomes
+
+The goal is the **simplest model that captures the essential dynamics** of your decision problem.
 
 Installation
 ============
@@ -103,7 +179,78 @@ g.print_sensitivity_report(num_simulations=1000, perturbation=0.1, top_n=5)
 mermaid_code = g.to_mermaid()
 print(mermaid_code)
 ```
-    
+
+### Distribution-Based Node Types
+
+Model uncertainty with stochastic payoffs using different probability distributions:
+
+```python
+from petersburg import Graph
+
+# Create a graph with different distribution types
+g = Graph()
+g.from_dict({
+    0: {'type': 'fixed', 'payoff': 0, 'after': []},  # Terminal node
+    1: {
+        'type': 'uniform',        # Uniform distribution
+        'min_payoff': 50,
+        'max_payoff': 150,
+        'after': [{'node_id': 0, 'cost': 10}]
+    },
+    2: {
+        'type': 'gaussian',       # Normal distribution
+        'mean': 100,
+        'std': 20,
+        'after': [{'node_id': 0, 'cost': 10}]
+    },
+    3: {
+        'type': 'lognormal',      # Log-normal (always positive)
+        'mu': 4.5,
+        'sigma': 0.5,
+        'after': [{'node_id': 0, 'cost': 10}]
+    },
+    4: {
+        'type': 'powerlaw',       # Power law (heavy tails)
+        'scale': 50,
+        'alpha': 2,
+        'after': [{'node_id': 0, 'cost': 10}]
+    },
+    5: {
+        'type': 'fixed',
+        'payoff': 0,
+        'after': [
+            {'node_id': 1, 'cost': 0, 'weight': 0.25},
+            {'node_id': 2, 'cost': 0, 'weight': 0.25},
+            {'node_id': 3, 'cost': 0, 'weight': 0.25},
+            {'node_id': 4, 'cost': 0, 'weight': 0.25},
+        ]
+    }
+})
+
+# Each simulation samples from the distributions
+outcomes = [g.get_outcome() for _ in range(1000)]
+```
+
+**Available Distribution Types:**
+
+- **UniformNode**: Payoffs uniformly distributed between min and max
+  - Use case: Equal probability across a range (e.g., uncertain market size)
+  - Parameters: `min_payoff`, `max_payoff`
+
+- **GaussianNode**: Normally distributed payoffs
+  - Use case: Natural variation around a mean (e.g., product sales)
+  - Parameters: `mean`, `std`
+
+- **LogNormalNode**: Log-normally distributed payoffs (always positive)
+  - Use case: Multiplicative processes, skewed positive outcomes (e.g., startup valuations)
+  - Parameters: `mu`, `sigma` (parameters of underlying normal distribution)
+
+- **PowerLawNode**: Power law (Pareto) distributed payoffs
+  - Use case: Heavy-tailed distributions with rare extreme events (e.g., viral content, breakthrough innovations)
+  - Parameters: `scale` (minimum value), `alpha` (tail heaviness)
+
+See [examples/distribution_nodes_demo.py](examples/distribution_nodes_demo.py) for detailed examples.
+
 Case Studies
 ============
 

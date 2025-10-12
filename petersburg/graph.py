@@ -10,7 +10,7 @@
 
 import numpy as np
 
-from petersburg.nodes import Node
+from petersburg.nodes import Node, UniformNode, GaussianNode, LogNormalNode, PowerLawNode
 
 __author__ = "willmcginnis"
 
@@ -50,6 +50,13 @@ class Graph:
         starting node.  Each node has a payoff, each edge has a cost, and each edge has a weight which corresponds to
         likelyhood of being traversed.
 
+        Nodes can be specified with different types using the 'type' key:
+        - 'fixed' or omitted: Node with fixed payoff (default)
+        - 'uniform': UniformNode with 'min_payoff' and 'max_payoff'
+        - 'gaussian': GaussianNode with 'mean' and 'std'
+        - 'lognormal': LogNormalNode with 'mu' and 'sigma'
+        - 'powerlaw': PowerLawNode with 'scale' and 'alpha'
+
         :param d:
         :return:
         """
@@ -60,14 +67,32 @@ class Graph:
         node = None
         node_list = {}
         for key in d:
-            if not d[key]["after"]:
+            # Create the appropriate node type based on the 'type' key
+            node_spec = d[key]
+            node_type = node_spec.get("type", "fixed").lower()
+
+            if node_type == "uniform":
+                new_node = UniformNode(
+                    key, node_spec.get("min_payoff", 0), node_spec.get("max_payoff", 0)
+                )
+            elif node_type == "gaussian":
+                new_node = GaussianNode(key, node_spec.get("mean", 0), node_spec.get("std", 1))
+            elif node_type == "lognormal":
+                new_node = LogNormalNode(key, node_spec.get("mu", 0), node_spec.get("sigma", 1))
+            elif node_type == "powerlaw":
+                new_node = PowerLawNode(
+                    key, node_spec.get("scale", 1), node_spec.get("alpha", 2)
+                )
+            else:  # 'fixed' or any other value defaults to Node
+                new_node = Node(key, payoff=node_spec.get("payoff", 0))
+
+            if not node_spec["after"]:
                 if node is not None:
                     raise AttributeError("Graph cannot have more than one starting node.")
-
-                node = Node(key, payoff=d[key].get("payoff", 0))
-                node_list.update({key: node})
+                node = new_node
+                node_list.update({key: new_node})
             else:
-                node_list.update({key: Node(key, payoff=d[key].get("payoff", 0))})
+                node_list.update({key: new_node})
 
         if node is None:
             raise AttributeError("Dict must contain a starting node (empty list for after key)")

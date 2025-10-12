@@ -33,16 +33,16 @@ case-studies:
 	@echo "Running case study analyses..."
 	@echo ""
 	@echo "=== Drug Development ==="
-	.venv/bin/python3 examples/case_studies/drug_development.py
+	.venv/bin/python3 examples/case_studies/drug_development/analyze.py
 	@echo ""
 	@echo "=== Startup Funding ==="
-	.venv/bin/python3 examples/case_studies/startup_funding.py
+	.venv/bin/python3 examples/case_studies/startup_funding/analyze.py
 	@echo ""
 	@echo "=== Product Launch ==="
-	.venv/bin/python3 examples/case_studies/product_launch.py
+	.venv/bin/python3 examples/case_studies/product_launch/analyze.py
 	@echo ""
 	@echo "=== Litigation Strategy ==="
-	.venv/bin/python3 examples/case_studies/litigation_strategy.py
+	.venv/bin/python3 examples/case_studies/litigation_strategy/analyze.py
 
 clean:
 	rm -rf .venv
