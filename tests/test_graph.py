@@ -1,12 +1,232 @@
+"""
+Tests for the core Graph API: construction, simulation, options, and export.
+"""
+
+import random
 import unittest
 
-from petersburg import *
+import numpy as np
+
+from petersburg import Graph
 
 __author__ = "willmcginnis"
 
 
-class TestPetersburg(unittest.TestCase):
-    """ """
+class TestGraphFromDict(unittest.TestCase):
+    """Construction of graphs from dictionary specifications."""
 
-    def test_petersburg(self):
-        pass
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def test_from_dict_sets_single_start_node(self):
+        g = Graph()
+        result = g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 50, "after": [{"node_id": 1, "cost": 10}]},
+            }
+        )
+        # from_dict returns self for chaining
+        self.assertIs(result, g)
+        self.assertIsNotNone(g.start_node)
+        self.assertEqual(g.start_node.node_id, 1)
+
+    def test_from_dict_no_start_node_raises(self):
+        g = Graph()
+        with self.assertRaises(AttributeError):
+            g.from_dict(
+                {
+                    1: {"payoff": 0, "after": [{"node_id": 2, "cost": 0}]},
+                    2: {"payoff": 0, "after": [{"node_id": 1, "cost": 0}]},
+                }
+            )
+
+    def test_from_dict_multiple_start_nodes_raises(self):
+        g = Graph()
+        with self.assertRaises(AttributeError):
+            g.from_dict(
+                {
+                    1: {"payoff": 0, "after": []},
+                    2: {"payoff": 0, "after": []},
+                }
+            )
+
+
+class TestGetOutcome(unittest.TestCase):
+    """Single-walk simulation through the graph."""
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def test_deterministic_single_path(self):
+        # 1 (start, payoff 0) -> 2 (payoff 50), edge cost 10
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 50, "after": [{"node_id": 1, "cost": 10}]},
+            }
+        )
+        # payoff (50) - cost (10) is fixed regardless of seeding
+        for _ in range(25):
+            self.assertEqual(g.get_outcome(), 40)
+
+    def test_payoffs_and_costs_net_out(self):
+        # Two-step deterministic chain: 1 -> 2 (cost 5, payoff 30) -> 3 (cost 15, payoff 100)
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 30, "after": [{"node_id": 1, "cost": 5}]},
+                3: {"payoff": 100, "after": [{"node_id": 2, "cost": 15}]},
+            }
+        )
+        # total payoff 130, total cost 20 -> 110
+        self.assertEqual(g.get_outcome(), 110)
+
+    def test_get_outcome_iters_accumulates_bank(self):
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 50, "after": [{"node_id": 1, "cost": 10}]},
+            }
+        )
+        # each walk nets 40; 5 walks from a starting bank of 100 -> 300
+        self.assertEqual(g.get_outcome(iters=5, starting_bank=100), 300)
+
+    def test_get_outcome_node_returns_terminal_id(self):
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 50, "after": [{"node_id": 1, "cost": 10}]},
+            }
+        )
+        self.assertEqual(g.get_outcome_node(), 2)
+
+    def test_get_outcome_node_picks_among_branches(self):
+        # Start branches to two terminals; the reached id must be one of them.
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 10, "after": [{"node_id": 1, "cost": 0, "weight": 0.5}]},
+                3: {"payoff": 20, "after": [{"node_id": 1, "cost": 0, "weight": 0.5}]},
+            }
+        )
+        reached = {g.get_outcome_node() for _ in range(100)}
+        self.assertTrue(reached.issubset({2, 3}))
+        # with equal weights and 100 draws, both branches should appear
+        self.assertEqual(reached, {2, 3})
+
+
+class TestGetOptions(unittest.TestCase):
+    """Expected-value comparison across the start node's initial choices."""
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _branching_graph(self):
+        # Start node 1 has two initial outcomes:
+        #   -> node 2 (payoff 100, edge cost 5)
+        #   -> node 3 (payoff 20, edge cost 0)
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 100, "after": [{"node_id": 1, "cost": 5}]},
+                3: {"payoff": 20, "after": [{"node_id": 1, "cost": 0}]},
+            }
+        )
+        return g
+
+    def test_one_entry_per_initial_outcome_with_known_means(self):
+        g = self._branching_graph()
+        options = g.get_options(iters=50)
+        self.assertEqual(set(options.keys()), {2, 3})
+        # Deterministic payoffs/costs: 100 - 5 = 95 and 20 - 0 = 20
+        self.assertEqual(options[2], 95.0)
+        self.assertEqual(options[3], 20.0)
+
+    def test_extended_stats_keys(self):
+        g = self._branching_graph()
+        options = g.get_options(iters=10, extended_stats=True)
+        self.assertEqual(set(options.keys()), {2, 3})
+        for stats in options.values():
+            self.assertEqual(set(stats.keys()), {"mean", "max", "min", "count"})
+        self.assertEqual(options[2]["count"], 10)
+        self.assertEqual(options[2]["mean"], 95.0)
+        self.assertEqual(options[2]["max"], 95)
+        self.assertEqual(options[2]["min"], 95)
+
+
+class TestFromAdjMatrix(unittest.TestCase):
+    """Construction from a numpy adjacency matrix."""
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def test_round_trip_includes_root_and_walks(self):
+        # A[r, c] != 0 creates edge r -> c, so this is the chain 0 -> 1.
+        A = np.array([[0.0, 1.0], [0.0, 0.0]])
+        g = Graph()
+        g.from_adj_matrix(A)
+
+        # The synthetic root node (-1) becomes the start node.
+        self.assertEqual(g.start_node.node_id, -1)
+        node_ids = {n.node_id for n in g.node_list()}
+        self.assertEqual(node_ids, {-1, 0, 1})
+
+        # Deterministic chain -1 -> 0 -> 1 terminates at node 1.
+        self.assertEqual(g.get_outcome_node(), 1)
+
+    def test_non_square_matrix_raises(self):
+        g = Graph()
+        with self.assertRaises(ValueError):
+            g.from_adj_matrix(np.zeros((2, 3)))
+
+
+class TestToMermaid(unittest.TestCase):
+    """Export to Mermaid diagram syntax."""
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def test_mermaid_contains_expected_lines(self):
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 50, "after": [{"node_id": 1, "cost": 10}]},
+            }
+        )
+        mermaid = g.to_mermaid()
+        self.assertIsInstance(mermaid, str)
+        self.assertTrue(mermaid.startswith("graph "))
+
+        # Start node rendered with the (()) shape.
+        self.assertIn("1((Start))", mermaid)
+        # Payoff node carries its payoff in the label.
+        self.assertIn("Payoff: $50", mermaid)
+        # Edge with a non-zero cost is labelled and points 1 -> 2.
+        self.assertIn("1 -->|Cost: $10| 2", mermaid)
+
+    def test_mermaid_orientation_argument(self):
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 50, "after": [{"node_id": 1, "cost": 10}]},
+            }
+        )
+        self.assertTrue(g.to_mermaid(orientation="TD").startswith("graph TD"))
+
+
+if __name__ == "__main__":
+    unittest.main()
