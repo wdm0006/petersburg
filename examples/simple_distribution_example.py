@@ -66,7 +66,7 @@ print("\n" + "=" * 50)
 print("Direct Node Usage Example")
 print("=" * 50)
 
-from petersburg import UniformNode, GaussianNode, LogNormalNode, PowerLawNode, Node, Graph
+from petersburg import GaussianNode, Graph, Node, UniformNode  # noqa: E402
 
 # Create nodes directly
 g2 = Graph()
@@ -89,4 +89,4 @@ outcomes2 = [g2.get_outcome() for _ in range(num_sims)]
 
 print(f"\nResults from {num_sims} simulations:")
 print(f"Mean outcome: ${sum(outcomes2) / len(outcomes2):.2f}")
-print(f"Expected: ~$130 (0.5 * (150-10) + 0.5 * (150-10))")
+print("Expected: ~$130 (0.5 * (150-10) + 0.5 * (150-10))")

@@ -47,10 +47,10 @@ if __name__ == "__main__":
     # Test four different casino bankroll levels
     # Each represents a different scale of financial institution
     bankroll_levels = [
-        100,           # Small local casino
-        10e6,          # $10 million - regional casino
-        10e9,          # $10 billion - major casino company
-        79200000000    # $79.2 billion - Bill Gates' wealth in 2014
+        100,  # Small local casino
+        10e6,  # $10 million - regional casino
+        10e9,  # $10 billion - major casino company
+        79200000000,  # $79.2 billion - Bill Gates' wealth in 2014
     ]
 
     print("=" * 70)

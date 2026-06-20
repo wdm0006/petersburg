@@ -83,9 +83,9 @@ import matplotlib.style
 import numpy as np
 
 matplotlib.style.use("ggplot")
-import pandas as pd
+import pandas as pd  # noqa: E402
 
-from petersburg import Graph
+from petersburg import Graph  # noqa: E402
 
 __author__ = "willmcginnis"
 
@@ -188,7 +188,7 @@ if __name__ == "__main__":
         maxes = []
         likelyhoods = []
 
-        for weight, graph in graphs:
+        for _weight, graph in graphs:
             # Simulate outcomes to measure expected value
             outcomes = []
             for _ in range(10000):
@@ -258,7 +258,9 @@ if __name__ == "__main__":
     for _, row in df.iterrows():
         nid = int(row["node_id"])
         grad = row["gradient"]
-        freq = df2[df2["node_id"] == nid]["frequency"].values[0] if nid in df2["node_id"].values else 0
+        freq = (
+            df2[df2["node_id"] == nid]["frequency"].values[0] if nid in df2["node_id"].values else 0
+        )
 
         # Determine priority based on gradient and frequency
         if grad > df["gradient"].median() and freq > df2["frequency"].median():
@@ -282,7 +284,9 @@ if __name__ == "__main__":
     # Create dual-axis visualization
     ax = df.plot(kind="scatter", x="node_id", y="gradient", s=50, label="Gradient")
     ax2 = ax.twinx()
-    df2.plot(ax=ax2, kind="scatter", x="node_id", y="frequency", s=50, color="red", label="Frequency")
+    df2.plot(
+        ax=ax2, kind="scatter", x="node_id", y="frequency", s=50, color="red", label="Frequency"
+    )
 
     # Style the plot
     for tl in ax2.get_yticklabels():

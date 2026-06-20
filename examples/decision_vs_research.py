@@ -72,61 +72,44 @@ if __name__ == "__main__":
         {
             # Node 1: Terminal node (end state)
             1: {"payoff": 0, "after": []},
-
             # Nodes 2-4: Final execution nodes (pay cost to execute chosen option)
             2: {
                 "payoff": 0,
-                "after": [{"node_id": 1, "cost": 10, "weight": 2}]
+                "after": [{"node_id": 1, "cost": 10, "weight": 2}],
                 # Cost $10 to execute, weight=2 means higher likelihood after research
             },
             3: {
                 "payoff": 0,
-                "after": [{"node_id": 1, "cost": 10}]
+                "after": [{"node_id": 1, "cost": 10}],
                 # Cost $10 to execute, default weight (no research advantage)
             },
             4: {
                 "payoff": 0,
-                "after": [{"node_id": 1, "cost": 10, "weight": 1.5}]
+                "after": [{"node_id": 1, "cost": 10, "weight": 1.5}],
                 # Cost $10 to execute, weight=1.5 (moderate research advantage)
             },
-
             # Node 5: Decision point after researching Option A
             5: {
                 "payoff": 0,
                 "after": [
-                    {"node_id": 2, "cost": 5},   # Execute A (research cost $5)
-                    {"node_id": 3, "cost": 10}   # Execute B instead (total $15)
-                ]
+                    {"node_id": 2, "cost": 5},  # Execute A (research cost $5)
+                    {"node_id": 3, "cost": 10},  # Execute B instead (total $15)
+                ],
             },
-
             # Node 6: Decision point after researching Option B
             6: {
                 "payoff": 0,
                 "after": [
-                    {"node_id": 2, "cost": 5},   # Execute B (research cost $5)
-                    {"node_id": 4, "cost": 10}   # Execute A instead (total $15)
-                ]
+                    {"node_id": 2, "cost": 5},  # Execute B (research cost $5)
+                    {"node_id": 4, "cost": 10},  # Execute A instead (total $15)
+                ],
             },
-
             # Nodes 7-8: Option A outcomes (high $25 or low $15)
-            7: {
-                "payoff": 25,  # Good outcome for Option A
-                "after": [{"node_id": 5, "cost": 0}]
-            },
-            8: {
-                "payoff": 15,  # Poor outcome for Option A
-                "after": [{"node_id": 5, "cost": 0}]
-            },
-
+            7: {"payoff": 25, "after": [{"node_id": 5, "cost": 0}]},  # Good outcome for Option A
+            8: {"payoff": 15, "after": [{"node_id": 5, "cost": 0}]},  # Poor outcome for Option A
             # Nodes 9-10: Option B outcomes (high $25 or low $15)
-            9: {
-                "payoff": 25,  # Good outcome for Option B
-                "after": [{"node_id": 6, "cost": 0}]
-            },
-            10: {
-                "payoff": 15,  # Poor outcome for Option B
-                "after": [{"node_id": 6, "cost": 0}]
-            },
+            9: {"payoff": 25, "after": [{"node_id": 6, "cost": 0}]},  # Good outcome for Option B
+            10: {"payoff": 15, "after": [{"node_id": 6, "cost": 0}]},  # Poor outcome for Option B
         }
     )
 

@@ -11,7 +11,7 @@
 from petersburg.edges import Edge
 from petersburg.estimators import FrequencyEstimator, MixedModeEstimator
 from petersburg.graph import Graph
-from petersburg.nodes import Node, UniformNode, GaussianNode, LogNormalNode, PowerLawNode
+from petersburg.nodes import GaussianNode, LogNormalNode, Node, PowerLawNode, UniformNode
 
 __all__ = [
     "Node",

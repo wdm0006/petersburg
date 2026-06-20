@@ -87,8 +87,8 @@ def simulate(c_switch):
     data = []
 
     # Define cost structure
-    in_house = 1.0            # Baseline cost for in-house development
-    third_party = 0.80        # 20% discount for outsourcing
+    in_house = 1.0  # Baseline cost for in-house development
+    third_party = 0.80  # 20% discount for outsourcing
     switching = in_house * c_switch  # Cost penalty for switching back
 
     # Test across range of failure probabilities
@@ -101,24 +101,20 @@ def simulate(c_switch):
             {
                 # Node 1: Terminal node
                 1: {"payoff": 0, "after": []},
-
                 # Node 2: All in-house path (3 features × in_house cost)
                 2: {"payoff": 0, "after": [{"node_id": 1, "cost": in_house}]},
                 3: {"payoff": 0, "after": [{"node_id": 2, "cost": in_house}]},
-
                 # Node 4: All outsourced path (3 features × third_party cost)
                 4: {"payoff": 0, "after": [{"node_id": 1, "cost": third_party}]},
                 5: {"payoff": 0, "after": [{"node_id": 4, "cost": third_party}]},
-
                 # Node 6: Mixed path - already switched once
                 6: {
                     "payoff": 0,
                     "after": [
                         {"node_id": 4, "cost": switching, "weight": weight}
                         # Try outsource again, might fail
-                    ]
+                    ],
                 },
-
                 # Node 7: After 1 switch, decide on feature 3
                 7: {
                     "payoff": 0,
@@ -128,13 +124,10 @@ def simulate(c_switch):
                         # Outsource again (2nd switch cost if fails)
                     ],
                 },
-
                 # Node 8: Fully in-house path (feature 3)
                 8: {"payoff": 0, "after": [{"node_id": 3, "cost": in_house}]},
-
                 # Node 9: Fully outsourced path (feature 3)
                 9: {"payoff": 0, "after": [{"node_id": 5, "cost": third_party}]},
-
                 # Node 10: Decision after 2 switches
                 10: {
                     "payoff": 0,
@@ -144,11 +137,10 @@ def simulate(c_switch):
                         # Outsource again (3rd switch cost if fails)
                     ],
                 },
-
                 # Nodes 11-13: Starting decision points for each feature
                 11: {"payoff": 0, "after": [{"node_id": 8, "cost": 0}]},  # Feature 1: In-house
                 12: {"payoff": 0, "after": [{"node_id": 9, "cost": 0}]},  # Feature 1: Outsource
-                13: {"payoff": 0, "after": [{"node_id": 10, "cost": 0}]}, # Feature 1: Mixed
+                13: {"payoff": 0, "after": [{"node_id": 10, "cost": 0}]},  # Feature 1: Mixed
             }
         )
 
@@ -183,8 +175,8 @@ def plot(c_switch):
     df.plot(kind="scatter", x="weight", y="in_house - third_party")
     plt.xlabel("Probability of Failure for 3rd Party Nodes")
     plt.ylabel("Strength of In-House Option")
-    plt.title("In House Vs. 3rd Party For c(x)=%2.1f*M*x" % (c_switch))
-    plt.axhline(y=0, color='black', linestyle='--', linewidth=2)
+    plt.title(f"In House Vs. 3rd Party For c(x)={c_switch:2.1f}*M*x")
+    plt.axhline(y=0, color="black", linestyle="--", linewidth=2)
     plt.grid()
     plt.show()
 
@@ -238,9 +230,13 @@ if __name__ == "__main__":
         # Print a few key examples
         if c_switch in [0.1, 0.5, 0.9]:
             if breakeven_prob:
-                print(f"Salvage rate {salvage_rate:.0%}: Break-even at {breakeven_prob:.1%} failure rate")
+                print(
+                    f"Salvage rate {salvage_rate:.0%}: Break-even at {breakeven_prob:.1%} failure rate"
+                )
             else:
-                print(f"Salvage rate {salvage_rate:.0%}: No clear break-even (always prefer one option)")
+                print(
+                    f"Salvage rate {salvage_rate:.0%}: No clear break-even (always prefer one option)"
+                )
 
     print()
     print("Generating break-even probability chart...")

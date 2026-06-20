@@ -9,6 +9,7 @@
 """
 
 import random
+
 import numpy as np
 
 from petersburg import Edge
@@ -77,7 +78,7 @@ class Node:
             if upto + w >= r:
                 return c
             upto += w
-        assert False, "Shouldn't get here"
+        raise AssertionError("Shouldn't get here")
 
     def get_outcome(self, feature_vector=None):
         """
@@ -130,11 +131,7 @@ class Node:
         return edge_list
 
     def __str__(self):
-        return "Node %s, with payoff %s and outcomes %s" % (
-            str(self.node_id),
-            str(self.payoff),
-            str(self.outcomes),
-        )
+        return f"Node {self.node_id}, with payoff {self.payoff} and outcomes {self.outcomes}"
 
     def __repr__(self):
         return str(self.node_id)
