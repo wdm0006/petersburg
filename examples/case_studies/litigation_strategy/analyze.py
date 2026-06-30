@@ -111,7 +111,7 @@ def build_litigation_graph():
     verdict_partial_mu = 5.99
     verdict_partial_sigma = 0.30
 
-    verdict_loss = 0  # $0 - plaintiff loses at trial
+    # verdict_loss is $0 — plaintiff loses at trial (kept as documentation)
 
     # SETTLEMENT: Negotiated at mediation, typically 60-70% of expected verdict
     # Gaussian(mean=600, std=80) → mean ~$600K, range ~$440K-$760K
@@ -222,7 +222,11 @@ def build_litigation_graph():
             "payoff": 0,
             "after": [
                 {"node_id": 9, "cost": 0, "weight": win_summary_judgment},  # 20% → Win on SJ
-                {"node_id": 12, "cost": trial_cost, "weight": 1 - win_summary_judgment},  # 80% → Trial
+                {
+                    "node_id": 12,
+                    "cost": trial_cost,
+                    "weight": 1 - win_summary_judgment,
+                },  # 80% → Trial
             ],
         },
         # Mediation Decision (THE CRITICAL POINT)
@@ -232,7 +236,11 @@ def build_litigation_graph():
             "payoff": 0,
             "after": [
                 {"node_id": 5, "cost": 0, "weight": settle_at_mediation},  # 70% → Settle
-                {"node_id": 13, "cost": motion_cost, "weight": 1 - settle_at_mediation},  # 30% → Motion
+                {
+                    "node_id": 13,
+                    "cost": motion_cost,
+                    "weight": 1 - settle_at_mediation,
+                },  # 30% → Motion
             ],
         },
         # Discovery Phase
@@ -354,7 +362,9 @@ def run_simulation(num_trials=100000):
     # Detailed breakdown of recoveries
     if net_recoveries > 0:
         large_recovery = np.sum(outcomes > 600)  # >$600K (likely verdict)
-        settlement_recovery = np.sum((outcomes > 400) & (outcomes <= 600))  # $400-600K (likely settlement)
+        settlement_recovery = np.sum(
+            (outcomes > 400) & (outcomes <= 600)
+        )  # $400-600K (likely settlement)
         small_recovery = np.sum((outcomes > 0) & (outcomes <= 400))  # <$400K (reduced verdicts)
 
         print("  Recovery Size Breakdown:")
@@ -401,7 +411,7 @@ def run_simulation(num_trials=100000):
     # Value at Risk (VaR)
     var_95 = np.percentile(outcomes, 5)
     print(f"  Value at Risk (95%):      ${var_95:>10.0f}K")
-    print(f"    (95% of outcomes are better than this)")
+    print("    (95% of outcomes are better than this)")
     print()
 
     # ============================================================================
@@ -486,7 +496,7 @@ def settlement_analysis():
     print(f"  Settlement Amount:        ${settlement_amount:>6.0f}K")
     print(f"  Costs to Reach Settlement: ${settlement_costs:>6.0f}K")
     print(f"  Net Recovery:              ${settlement_net:>6.0f}K")
-    print(f"  Certainty:                 100%")
+    print("  Certainty:                 100%")
     print(f"  Expected Value:            ${settlement_net:>6.0f}K")
     print()
 
@@ -514,7 +524,9 @@ def settlement_analysis():
     p_win_trial_and_affirm = p_go_to_trial * win_at_trial * verdict_affirmed
 
     # Probability of losing (either lose trial or reversed on appeal)
-    p_lose = p_go_to_trial * (1 - win_at_trial) + (p_go_to_trial * win_at_trial * (1 - verdict_affirmed))
+    p_lose = p_go_to_trial * (1 - win_at_trial) + (
+        p_go_to_trial * win_at_trial * (1 - verdict_affirmed)
+    )
 
     # Verdict amounts (40% full, 60% partial)
     verdict_full = 1000
@@ -541,11 +553,13 @@ def settlement_analysis():
 
     trial_expected_value = ev_win_sj + ev_win_trial + ev_lose
 
-    print(f"  Expected Value Calculation:")
+    print("  Expected Value Calculation:")
     print(f"    EV (win on SJ):          ${ev_win_sj:>7.0f}K ({p_win_sj*100:.1f}%)")
-    print(f"    EV (win at trial):       ${ev_win_trial:>7.0f}K ({p_win_trial_and_affirm*100:.1f}%)")
+    print(
+        f"    EV (win at trial):       ${ev_win_trial:>7.0f}K ({p_win_trial_and_affirm*100:.1f}%)"
+    )
     print(f"    EV (lose):               ${ev_lose:>7.0f}K ({p_lose*100:.1f}%)")
-    print(f"    ─────────────────────────────────")
+    print("    ─────────────────────────────────")
     print(f"    Total Expected Value:    ${trial_expected_value:>7.0f}K")
     print()
 
@@ -563,7 +577,7 @@ def settlement_analysis():
 
     advantage = settlement_net - trial_expected_value
     if advantage > 0:
-        print(f"  DECISION: ACCEPT SETTLEMENT")
+        print("  DECISION: ACCEPT SETTLEMENT")
         print(f"  Settlement is ${advantage:.0f}K better than going to trial")
         print()
         print("  Why Settlement Wins:")
@@ -572,7 +586,7 @@ def settlement_analysis():
         print("    3. Risk: Eliminates 50%+ chance of losing at trial")
         print("    4. Time: Receive money now vs 2-3 years from now")
     else:
-        print(f"  DECISION: REJECT SETTLEMENT, GO TO TRIAL")
+        print("  DECISION: REJECT SETTLEMENT, GO TO TRIAL")
         print(f"  Trial is ${-advantage:.0f}K better than settling")
 
     print()
@@ -604,10 +618,10 @@ def settlement_analysis():
     defendant_savings = defendant_expected_loss - settlement_amount
     if defendant_savings > 0:
         print(f"  Defendant SAVES ${defendant_savings:.0f}K by settling at $600K")
-        print(f"  Settlement is rational for defendant (costs less than trial)")
+        print("  Settlement is rational for defendant (costs less than trial)")
     else:
         print(f"  Defendant LOSES ${-defendant_savings:.0f}K by settling at $600K")
-        print(f"  Defendant should reject settlement and defend at trial")
+        print("  Defendant should reject settlement and defend at trial")
 
     print()
 
@@ -631,18 +645,18 @@ def settlement_analysis():
         print(f"  Settlement Zone:         ${plaintiff_minimum:.0f}K - ${defendant_maximum:.0f}K")
         print(f"  Zone Width:              ${zone_width:>7.0f}K")
         print()
-        print(f"  ANY settlement in this range makes both parties better off.")
+        print("  ANY settlement in this range makes both parties better off.")
         print()
         print(f"  Current Offer:           ${settlement_amount:.0f}K")
         if settlement_amount >= plaintiff_minimum and settlement_amount <= defendant_maximum:
-            print(f"  Status: WITHIN ZONE → Both parties benefit, settlement likely")
+            print("  Status: WITHIN ZONE → Both parties benefit, settlement likely")
         elif settlement_amount < plaintiff_minimum:
-            print(f"  Status: BELOW ZONE → Plaintiff rejects, increase offer")
+            print("  Status: BELOW ZONE → Plaintiff rejects, increase offer")
         else:
-            print(f"  Status: ABOVE ZONE → Defendant rejects, reduce demand")
+            print("  Status: ABOVE ZONE → Defendant rejects, reduce demand")
     else:
-        print(f"  NO SETTLEMENT ZONE EXISTS")
-        print(f"  Parties' valuations don't overlap → Case will go to trial")
+        print("  NO SETTLEMENT ZONE EXISTS")
+        print("  Parties' valuations don't overlap → Case will go to trial")
         print()
         print("  This happens when:")
         print("    - Parties disagree on win probability (asymmetric information)")
@@ -683,7 +697,9 @@ def cost_sensitivity_analysis():
 
     print("Results:")
     print("=" * 80)
-    print(f"{'Trial Cost':<12} {'Trial EV':<15} {'Settlement EV':<15} {'Difference':<15} {'Decision':<20}")
+    print(
+        f"{'Trial Cost':<12} {'Trial EV':<15} {'Settlement EV':<15} {'Difference':<15} {'Decision':<20}"
+    )
     print("-" * 80)
 
     for trial_cost in trial_cost_scenarios:

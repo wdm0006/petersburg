@@ -393,11 +393,11 @@ def run_simulation(num_trials=100000):
     expected_value = np.mean(outcomes)
     print(f"Expected Value (EV): ${expected_value:.2f}K (${expected_value/1000:.2f}M)")
     if expected_value > 0:
-        print(f"  → Products have POSITIVE expected value with staged validation")
-        print(f"  → Pilot testing creates option value by killing bad products early")
+        print("  → Products have POSITIVE expected value with staged validation")
+        print("  → Pilot testing creates option value by killing bad products early")
     else:
-        print(f"  → Products have NEGATIVE expected value")
-        print(f"  → This scenario suggests inadequate validation or poor market selection")
+        print("  → Products have NEGATIVE expected value")
+        print("  → This scenario suggests inadequate validation or poor market selection")
     print()
 
     # ============================================================================
@@ -423,9 +423,7 @@ def run_simulation(num_trials=100000):
     weak = np.sum((outcomes > 0) & (outcomes <= 5000))  # <$5M
 
     print("  Market Performance Breakdown (successful products only):")
-    print(
-        f"    Blockbuster (>$40M):  {blockbusters:>8,} ({blockbusters/num_trials*100:>5.2f}%)"
-    )
+    print(f"    Blockbuster (>$40M):  {blockbusters:>8,} ({blockbusters/num_trials*100:>5.2f}%)")
     print(f"    Strong ($15-40M):     {strong:>8,} ({strong/num_trials*100:>5.2f}%)")
     print(f"    Moderate ($5-15M):    {moderate:>8,} ({moderate/num_trials*100:>5.2f}%)")
     print(f"    Weak (<$5M):          {weak:>8,} ({weak/num_trials*100:>5.2f}%)")
@@ -445,7 +443,7 @@ def run_simulation(num_trials=100000):
     # Value at Risk (VaR)
     var_95 = np.percentile(outcomes, 5)
     print(f"  Value at Risk (95%):      ${var_95:>10.2f}K")
-    print(f"    (95% of outcomes are better than this)")
+    print("    (95% of outcomes are better than this)")
     print()
 
     # ============================================================================
@@ -904,7 +902,9 @@ def pilot_sensitivity_analysis():
 
         # Calculate national launch rate
         # Products that didn't fail at pilot stage
-        national_launch_rate = pilot_strong_results * concept_success * prototype_success * focus_groups_success
+        national_launch_rate = (
+            pilot_strong_results * concept_success * prototype_success * focus_groups_success
+        )
 
         # Store results
         results["pilot_threshold"].append(threshold)
@@ -950,23 +950,21 @@ def pilot_sensitivity_analysis():
     # Compare extremes
     aggressive_ev = results["expected_value"][0]  # 10% threshold
     conservative_ev = results["expected_value"][-1]  # 40% threshold
-    optimal_vs_aggressive = ((optimal_ev - aggressive_ev) / abs(aggressive_ev)) * 100
-
-    print(f"2. Being too AGGRESSIVE (10% threshold):")
+    print("2. Being too AGGRESSIVE (10% threshold):")
     print(f"   - Launches {results['national_launch_rate'][0]:.1f}% of products nationally")
-    print(f"   - Many weak products make it through → wasted national launch costs")
+    print("   - Many weak products make it through → wasted national launch costs")
     print(f"   - EV: ${aggressive_ev:.2f}K")
     print()
 
-    print(f"3. Being too CONSERVATIVE (40% threshold):")
+    print("3. Being too CONSERVATIVE (40% threshold):")
     print(f"   - Launches only {results['national_launch_rate'][-1]:.1f}% of products nationally")
-    print(f"   - Kills some viable products → missed opportunities")
+    print("   - Kills some viable products → missed opportunities")
     print(f"   - EV: ${conservative_ev:.2f}K")
     print()
 
-    print(f"4. The 20-25% threshold (industry best practice) is near-optimal")
-    print(f"   - Balances false negatives (killed good products) vs")
-    print(f"     false positives (launched bad products)")
+    print("4. The 20-25% threshold (industry best practice) is near-optimal")
+    print("   - Balances false negatives (killed good products) vs")
+    print("     false positives (launched bad products)")
     print()
 
     # ============================================================================

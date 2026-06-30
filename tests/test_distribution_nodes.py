@@ -3,8 +3,10 @@ Tests for distribution-based node types.
 """
 
 import unittest
+
 import numpy as np
-from petersburg import Graph, Node, UniformNode, GaussianNode, LogNormalNode, PowerLawNode
+
+from petersburg import GaussianNode, Graph, LogNormalNode, PowerLawNode, UniformNode
 
 
 class TestDistributionNodes(unittest.TestCase):

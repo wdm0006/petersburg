@@ -10,7 +10,7 @@
 
 import numpy as np
 
-from petersburg.nodes import Node, UniformNode, GaussianNode, LogNormalNode, PowerLawNode
+from petersburg.nodes import GaussianNode, LogNormalNode, Node, PowerLawNode, UniformNode
 
 __author__ = "willmcginnis"
 
@@ -80,9 +80,7 @@ class Graph:
             elif node_type == "lognormal":
                 new_node = LogNormalNode(key, node_spec.get("mu", 0), node_spec.get("sigma", 1))
             elif node_type == "powerlaw":
-                new_node = PowerLawNode(
-                    key, node_spec.get("scale", 1), node_spec.get("alpha", 2)
-                )
+                new_node = PowerLawNode(key, node_spec.get("scale", 1), node_spec.get("alpha", 2))
             else:  # 'fixed' or any other value defaults to Node
                 new_node = Node(key, payoff=node_spec.get("payoff", 0))
 
@@ -264,13 +262,13 @@ class Graph:
         """
         try:
             import networkx as nx
-        except ImportError:
-            raise ImportError("the to networkx function requires networkx")
+        except ImportError as err:
+            raise ImportError("the to networkx function requires networkx") from err
 
         g = nx.DiGraph()
 
         # first make a node id: obj mapping and add nodes to the graph
-        node_to_node_id = dict([(node, node.node_id) for node in self.node_list()])
+        node_to_node_id = {node: node.node_id for node in self.node_list()}
         nodes = list(node_to_node_id.values())
         g.add_nodes_from(nodes)
 
@@ -654,11 +652,11 @@ class Graph:
     @staticmethod
     def graph_draw(g, filename):
         try:
-            import matplotlib.pyplot as plt
-            import networkx as nx
-            import pygraphviz
-        except ImportError:
-            raise ImportError("the plot function requires networkx and pygraphviz")
+            import matplotlib.pyplot as plt  # noqa: F401
+            import networkx as nx  # noqa: F401
+            import pygraphviz  # noqa: F401
+        except ImportError as err:
+            raise ImportError("the plot function requires networkx and pygraphviz") from err
 
         # pure graphviz
         # A = nx.to_agraph(g)

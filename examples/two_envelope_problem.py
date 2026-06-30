@@ -55,9 +55,9 @@ import matplotlib.pyplot as plt
 import matplotlib.style
 
 matplotlib.style.use("ggplot")
-import pandas as pd
+import pandas as pd  # noqa: E402
 
-from petersburg import Graph
+from petersburg import Graph  # noqa: E402
 
 __author__ = "willmcginnis"
 
@@ -81,14 +81,14 @@ if __name__ == "__main__":
                 "after": [
                     {"node_id": 2, "cost": 0},  # Option 1: Keep the $100
                     {"node_id": 3, "cost": 0},  # Option 2: Switch (get $50)
-                ]
+                ],
             },
             5: {
                 "payoff": 50,  # Currently holding envelope with $50
                 "after": [
                     {"node_id": 3, "cost": 0},  # Option 1: Keep the $50
                     {"node_id": 2, "cost": 0},  # Option 2: Switch (get $100)
-                ]
+                ],
             },
         }
     )

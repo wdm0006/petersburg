@@ -105,4 +105,4 @@ if __name__ == "__main__":
 
     accuracy = validate(y_hat, labels, y_test)
     print("\nOverall Accuracy")
-    print("%9.5f%%" % (accuracy * 100.0,))
+    print(f"{accuracy * 100.0:9.5f}%")

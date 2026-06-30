@@ -86,11 +86,11 @@ if __name__ == "__main__":
 
     # Define the graph parameters
     # These represent an outsourcing decision with high switching costs
-    c_switch = 2            # High switching cost (200% of baseline)
-    in_house = 1            # Baseline in-house development cost
-    third_party = 0.5       # Third party is 50% cheaper
-    switching = c_switch    # Cost to revert from outsourcing
-    weight = 0.67           # 67% probability of outsourcing success
+    c_switch = 2  # High switching cost (200% of baseline)
+    in_house = 1  # Baseline in-house development cost
+    third_party = 0.5  # Third party is 50% cheaper
+    switching = c_switch  # Cost to revert from outsourcing
+    weight = 0.67  # 67% probability of outsourcing success
 
     print("Graph parameters:")
     print(f"  In-house cost: {in_house}")
@@ -109,48 +109,37 @@ if __name__ == "__main__":
         {
             # Node 1: Terminal node (end of decision path)
             1: {"payoff": 0, "after": []},
-
             # Nodes 2-3: In-house development path (3 features)
             2: {"payoff": 0, "after": [{"node_id": 1, "cost": in_house}]},
             3: {"payoff": 0, "after": [{"node_id": 2, "cost": in_house}]},
-
             # Nodes 4-5: Outsourced development path (3 features)
             4: {"payoff": 0, "after": [{"node_id": 1, "cost": third_party}]},
             5: {"payoff": 0, "after": [{"node_id": 4, "cost": third_party}]},
-
             # Node 6: After first switch, try outsourcing again
-            6: {
-                "payoff": 0,
-                "after": [{"node_id": 4, "cost": switching, "weight": weight}]
-            },
-
+            6: {"payoff": 0, "after": [{"node_id": 4, "cost": switching, "weight": weight}]},
             # Node 7: Second feature decision after one switch
             7: {
                 "payoff": 0,
                 "after": [
-                    {"node_id": 6, "cost": in_house},           # Stay in-house
+                    {"node_id": 6, "cost": in_house},  # Stay in-house
                     {"node_id": 5, "cost": 2 * switching, "weight": weight},  # Switch again
                 ],
             },
-
             # Node 8: Fully in-house path for feature 3
             8: {"payoff": 0, "after": [{"node_id": 3, "cost": in_house}]},
-
             # Node 9: Fully outsourced path for feature 3
             9: {"payoff": 0, "after": [{"node_id": 5, "cost": third_party}]},
-
             # Node 10: Third feature decision after two switches
             10: {
                 "payoff": 0,
                 "after": [
-                    {"node_id": 7, "cost": in_house},           # Stay in-house
+                    {"node_id": 7, "cost": in_house},  # Stay in-house
                     {"node_id": 5, "cost": 3 * switching, "weight": weight},  # Switch third time
                 ],
             },
-
             # Nodes 11-13: Starting decision points for each path
-            11: {"payoff": 0, "after": [{"node_id": 8, "cost": 0}]},   # Start with all in-house
-            12: {"payoff": 0, "after": [{"node_id": 9, "cost": 0}]},   # Start with all outsourced
+            11: {"payoff": 0, "after": [{"node_id": 8, "cost": 0}]},  # Start with all in-house
+            12: {"payoff": 0, "after": [{"node_id": 9, "cost": 0}]},  # Start with all outsourced
             13: {"payoff": 0, "after": [{"node_id": 10, "cost": 0}]},  # Start with mixed strategy
         }
     )
@@ -165,7 +154,7 @@ if __name__ == "__main__":
 
     # Generate the visualization
     output_path = os.path.join(output_dir, "print.png")
-    print(f"Generating visualization...")
+    print("Generating visualization...")
     print(f"  Output path: {output_path}")
     print()
 
@@ -228,7 +217,7 @@ if __name__ == "__main__":
         print("=" * 70)
 
     except Exception as e:
-        print(f"ERROR: Failed to generate visualization")
+        print("ERROR: Failed to generate visualization")
         print(f"  {str(e)}")
         print()
         print("Note: Graph visualization requires graphviz to be installed.")

@@ -32,4 +32,4 @@ class Edge:
         return self.cost
 
     def __repr__(self):
-        return "Edge: %s -> %s" % (self.from_node.__repr__(), self.to_node.__repr__())
+        return f"Edge: {self.from_node.__repr__()} -> {self.to_node.__repr__()}"

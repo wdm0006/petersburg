@@ -331,8 +331,8 @@ def run_simulation(num_trials=100000):
     expected_value = np.mean(outcomes)
     print(f"Expected Value (EV): ${expected_value:.2f}M")
     if expected_value < 0:
-        print(f"  → Individual drugs have NEGATIVE expected value")
-        print(f"  → This is why portfolio strategy is essential")
+        print("  → Individual drugs have NEGATIVE expected value")
+        print("  → This is why portfolio strategy is essential")
     print()
 
     # ============================================================================
@@ -358,9 +358,7 @@ def run_simulation(num_trials=100000):
     minor = np.sum((outcomes > 0) & (outcomes <= 300))  # <$300M
 
     print("  Market Performance Breakdown (approved drugs only):")
-    print(
-        f"    Blockbuster (>$4B):    {blockbusters:>8,} ({blockbusters/num_trials*100:>5.2f}%)"
-    )
+    print(f"    Blockbuster (>$4B):    {blockbusters:>8,} ({blockbusters/num_trials*100:>5.2f}%)")
     print(f"    Major ($1.5-4B):       {major:>8,} ({major/num_trials*100:>5.2f}%)")
     print(f"    Moderate ($300M-1.5B): {moderate:>8,} ({moderate/num_trials*100:>5.2f}%)")
     print(f"    Minor (<$300M):        {minor:>8,} ({minor/num_trials*100:>5.2f}%)")
@@ -380,7 +378,7 @@ def run_simulation(num_trials=100000):
     # Value at Risk (VaR)
     var_95 = np.percentile(outcomes, 5)
     print(f"  Value at Risk (95%):      ${var_95:>10.2f}M")
-    print(f"    (95% of outcomes are better than this)")
+    print("    (95% of outcomes are better than this)")
     print()
 
     # ============================================================================
@@ -545,7 +543,11 @@ def inversion_analysis():
         improved_prob_phase3 = 0.60 * 0.70 * improved_phase2
         improved_prob_fda = improved_prob_phase3 * 0.58
         improved_expected_cost = (
-            50 + (25 * 0.60) + (60 * 0.60 * 0.70) + (250 * improved_prob_phase3) + (5 * improved_prob_fda)
+            50
+            + (25 * 0.60)
+            + (60 * 0.60 * 0.70)
+            + (250 * improved_prob_phase3)
+            + (5 * improved_prob_fda)
         )
 
         improved_portfolio_cost = improved_drugs_needed * improved_expected_cost
@@ -639,10 +641,30 @@ def sensitivity_analysis_phase2():
             3: {"payoff": 0, "after": [{"node_id": 0, "cost": 0, "weight": 1.0}]},
             4: {"payoff": 0, "after": [{"node_id": 0, "cost": 0, "weight": 1.0}]},
             5: {"payoff": 0, "after": [{"node_id": 0, "cost": 0, "weight": 1.0}]},
-            6: {"type": "lognormal", "mu": blockbuster_mu, "sigma": blockbuster_sigma, "after": [{"node_id": 0, "cost": 0, "weight": 1.0}]},
-            7: {"type": "lognormal", "mu": major_mu, "sigma": major_sigma, "after": [{"node_id": 0, "cost": 0, "weight": 1.0}]},
-            8: {"type": "lognormal", "mu": moderate_mu, "sigma": moderate_sigma, "after": [{"node_id": 0, "cost": 0, "weight": 1.0}]},
-            9: {"type": "lognormal", "mu": minor_mu, "sigma": minor_sigma, "after": [{"node_id": 0, "cost": 0, "weight": 1.0}]},
+            6: {
+                "type": "lognormal",
+                "mu": blockbuster_mu,
+                "sigma": blockbuster_sigma,
+                "after": [{"node_id": 0, "cost": 0, "weight": 1.0}],
+            },
+            7: {
+                "type": "lognormal",
+                "mu": major_mu,
+                "sigma": major_sigma,
+                "after": [{"node_id": 0, "cost": 0, "weight": 1.0}],
+            },
+            8: {
+                "type": "lognormal",
+                "mu": moderate_mu,
+                "sigma": moderate_sigma,
+                "after": [{"node_id": 0, "cost": 0, "weight": 1.0}],
+            },
+            9: {
+                "type": "lognormal",
+                "mu": minor_mu,
+                "sigma": minor_sigma,
+                "after": [{"node_id": 0, "cost": 0, "weight": 1.0}],
+            },
             10: {
                 "payoff": 0,
                 "after": [

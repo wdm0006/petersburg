@@ -199,9 +199,9 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
                 if self._frequency_matrix[r_idx, c_idx] >= self._min_samples:
                     if self.verbose:
                         print("\nFound a sample worth modeling")
-                        print("F[%s,%s]=%s" % (r_idx, c_idx, self._frequency_matrix[r_idx, c_idx]))
-                        print("from label: %s" % (str(self._cateogry_labels[r_idx]),))
-                        print("to label: %s" % (str(self._cateogry_labels[c_idx]),))
+                        print(f"F[{r_idx},{c_idx}]={self._frequency_matrix[r_idx, c_idx]}")
+                        print(f"from label: {self._cateogry_labels[r_idx]}")
+                        print(f"to label: {self._cateogry_labels[c_idx]}")
 
                     filter_col = self._cateogry_labels[r_idx][0]
                     filter_term = self._cateogry_labels[r_idx][1]

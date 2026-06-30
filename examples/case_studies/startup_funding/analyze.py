@@ -23,6 +23,7 @@ Later stages → more IPOs and mega exits
 """
 
 import numpy as np
+
 from petersburg import Graph
 
 __author__ = "willmcginnis"
@@ -44,11 +45,11 @@ def build_startup_journey_graph_v2():
     # ============================================================================
     # As an early-stage investor, we only invest at pre-seed and seed
     # Later rounds (A, B, C) happen but we don't participate (no additional cost)
-    preseed_investment = 0.5   # We invest $500K at pre-seed
-    seed_investment = 2.0       # We invest $2M at seed
-    seriesa_investment = 0.0    # No additional investment (not participating)
-    seriesb_investment = 0.0    # No additional investment
-    seriesc_investment = 0.0    # No additional investment
+    preseed_investment = 0.5  # We invest $500K at pre-seed
+    seed_investment = 2.0  # We invest $2M at seed
+    seriesa_investment = 0.0  # No additional investment (not participating)
+    seriesb_investment = 0.0  # No additional investment
+    seriesc_investment = 0.0  # No additional investment
 
     # ============================================================================
     # TRANSITION PROBABILITIES
@@ -56,22 +57,22 @@ def build_startup_journey_graph_v2():
     # At each stage: Continue to next round, Exit, or Wind Down
 
     preseed_continue = 0.35  # 35% raise seed
-    preseed_exit = 0.03      # 3% exit (exits are rare this early)
+    preseed_exit = 0.03  # 3% exit (exits are rare this early)
     # preseed_fail = 0.62 (62% wind down)
 
-    seed_continue = 0.18     # 18% raise Series A (THE CRUNCH)
-    seed_exit = 0.05         # 5% exit (mostly acquihires)
+    seed_continue = 0.18  # 18% raise Series A (THE CRUNCH)
+    seed_exit = 0.05  # 5% exit (mostly acquihires)
     # seed_fail = 0.77 (77% wind down)
 
     seriesa_continue = 0.60  # 60% raise Series B
-    seriesa_exit = 0.10      # 10% exit
+    seriesa_exit = 0.10  # 10% exit
     # seriesa_fail = 0.30 (30% wind down)
 
     seriesb_continue = 0.65  # 65% raise Series C
-    seriesb_exit = 0.25      # 25% exit
+    seriesb_exit = 0.25  # 25% exit
     # seriesb_fail = 0.10 (10% wind down)
 
-    seriesc_exit = 0.85      # 85% exit
+    seriesc_exit = 0.85  # 85% exit
     # seriesc_fail = 0.15 (15% wind down)
 
     # ============================================================================
@@ -92,9 +93,9 @@ def build_startup_journey_graph_v2():
     # Early-stage investors get diluted through subsequent rounds
     # These represent realistic ownership at exit time
 
-    preseed_ownership = 0.08   # 8% ownership if exit at pre-seed (minimal dilution)
-    seed_ownership = 0.06      # 6% ownership if exit at seed (some dilution)
-    seriesa_ownership = 0.04   # 4% ownership if exit at Series A (more dilution)
+    preseed_ownership = 0.08  # 8% ownership if exit at pre-seed (minimal dilution)
+    seed_ownership = 0.06  # 6% ownership if exit at seed (some dilution)
+    seriesa_ownership = 0.04  # 4% ownership if exit at Series A (more dilution)
     seriesb_ownership = 0.025  # 2.5% ownership if exit at Series B
     seriesc_ownership = 0.015  # 1.5% ownership if exit at Series C+ (heavy dilution)
 
@@ -135,6 +136,7 @@ def build_startup_journey_graph_v2():
         Since we're multiplying by a constant, we adjust mu by log(ownership_pct)
         """
         import math
+
         scaled_mu = mu + math.log(ownership_pct)
         return scaled_mu, sigma  # sigma stays the same
 
@@ -159,7 +161,7 @@ def build_startup_journey_graph_v2():
         "type": "lognormal",
         "mu": preseed_acquihire_mu,
         "sigma": preseed_acquihire_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
@@ -171,7 +173,7 @@ def build_startup_journey_graph_v2():
         "type": "lognormal",
         "mu": preseed_acquisition_mu,
         "sigma": preseed_acquisition_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
@@ -184,7 +186,7 @@ def build_startup_journey_graph_v2():
         "type": "lognormal",
         "mu": seed_acquihire_mu,
         "sigma": seed_acquihire_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
@@ -196,7 +198,7 @@ def build_startup_journey_graph_v2():
         "type": "lognormal",
         "mu": seed_acquisition_mu,
         "sigma": seed_acquisition_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
@@ -209,7 +211,7 @@ def build_startup_journey_graph_v2():
         "type": "lognormal",
         "mu": seriesa_acquihire_mu,
         "sigma": seriesa_acquihire_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
@@ -221,19 +223,17 @@ def build_startup_journey_graph_v2():
         "type": "lognormal",
         "mu": seriesa_acquisition_mu,
         "sigma": seriesa_acquisition_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
-    seriesa_ipo_mu, seriesa_ipo_sigma = scale_lognormal_params(
-        ipo_mu, ipo_sigma, seriesa_ownership
-    )
+    seriesa_ipo_mu, seriesa_ipo_sigma = scale_lognormal_params(ipo_mu, ipo_sigma, seriesa_ownership)
     seriesa_ipo_node = node_id
     graph_dict[seriesa_ipo_node] = {
         "type": "lognormal",
         "mu": seriesa_ipo_mu,
         "sigma": seriesa_ipo_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
@@ -246,7 +246,7 @@ def build_startup_journey_graph_v2():
         "type": "lognormal",
         "mu": seriesb_acquihire_mu,
         "sigma": seriesb_acquihire_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
@@ -258,19 +258,17 @@ def build_startup_journey_graph_v2():
         "type": "lognormal",
         "mu": seriesb_acquisition_mu,
         "sigma": seriesb_acquisition_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
-    seriesb_ipo_mu, seriesb_ipo_sigma = scale_lognormal_params(
-        ipo_mu, ipo_sigma, seriesb_ownership
-    )
+    seriesb_ipo_mu, seriesb_ipo_sigma = scale_lognormal_params(ipo_mu, ipo_sigma, seriesb_ownership)
     seriesb_ipo_node = node_id
     graph_dict[seriesb_ipo_node] = {
         "type": "lognormal",
         "mu": seriesb_ipo_mu,
         "sigma": seriesb_ipo_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
@@ -282,7 +280,7 @@ def build_startup_journey_graph_v2():
         "type": "lognormal",
         "mu": seriesb_mega_mu,
         "sigma": seriesb_mega_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
@@ -295,19 +293,17 @@ def build_startup_journey_graph_v2():
         "type": "lognormal",
         "mu": seriesc_acquisition_mu,
         "sigma": seriesc_acquisition_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
-    seriesc_ipo_mu, seriesc_ipo_sigma = scale_lognormal_params(
-        ipo_mu, ipo_sigma, seriesc_ownership
-    )
+    seriesc_ipo_mu, seriesc_ipo_sigma = scale_lognormal_params(ipo_mu, ipo_sigma, seriesc_ownership)
     seriesc_ipo_node = node_id
     graph_dict[seriesc_ipo_node] = {
         "type": "lognormal",
         "mu": seriesc_ipo_mu,
         "sigma": seriesc_ipo_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
@@ -319,7 +315,7 @@ def build_startup_journey_graph_v2():
         "type": "lognormal",
         "mu": seriesc_mega_mu,
         "sigma": seriesc_mega_sigma,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
@@ -329,35 +325,35 @@ def build_startup_journey_graph_v2():
     preseed_winddown = node_id
     graph_dict[preseed_winddown] = {
         "payoff": 0,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
     seed_winddown = node_id
     graph_dict[seed_winddown] = {
         "payoff": 0,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
     seriesa_winddown = node_id
     graph_dict[seriesa_winddown] = {
         "payoff": 0,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
     seriesb_winddown = node_id
     graph_dict[seriesb_winddown] = {
         "payoff": 0,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
     seriesc_winddown = node_id
     graph_dict[seriesc_winddown] = {
         "payoff": 0,
-        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}]
+        "after": [{"node_id": terminal_node, "cost": 0, "weight": 1.0}],
     }
     node_id += 1
 
@@ -370,9 +366,17 @@ def build_startup_journey_graph_v2():
     graph_dict[preseed_exit_dist] = {
         "payoff": 0,
         "after": [
-            {"node_id": preseed_acquihire_node, "cost": 0, "weight": preseed_exit_types["acquihire"]},
-            {"node_id": preseed_acquisition_node, "cost": 0, "weight": preseed_exit_types["acquisition"]},
-        ]
+            {
+                "node_id": preseed_acquihire_node,
+                "cost": 0,
+                "weight": preseed_exit_types["acquihire"],
+            },
+            {
+                "node_id": preseed_acquisition_node,
+                "cost": 0,
+                "weight": preseed_exit_types["acquisition"],
+            },
+        ],
     }
     node_id += 1
 
@@ -383,7 +387,7 @@ def build_startup_journey_graph_v2():
         "after": [
             {"node_id": seed_acquihire_node, "cost": 0, "weight": seed_exit_types["acquihire"]},
             {"node_id": seed_acquisition_node, "cost": 0, "weight": seed_exit_types["acquisition"]},
-        ]
+        ],
     }
     node_id += 1
 
@@ -392,10 +396,18 @@ def build_startup_journey_graph_v2():
     graph_dict[seriesa_exit_dist] = {
         "payoff": 0,
         "after": [
-            {"node_id": seriesa_acquihire_node, "cost": 0, "weight": seriesa_exit_types["acquihire"]},
-            {"node_id": seriesa_acquisition_node, "cost": 0, "weight": seriesa_exit_types["acquisition"]},
+            {
+                "node_id": seriesa_acquihire_node,
+                "cost": 0,
+                "weight": seriesa_exit_types["acquihire"],
+            },
+            {
+                "node_id": seriesa_acquisition_node,
+                "cost": 0,
+                "weight": seriesa_exit_types["acquisition"],
+            },
             {"node_id": seriesa_ipo_node, "cost": 0, "weight": seriesa_exit_types["ipo"]},
-        ]
+        ],
     }
     node_id += 1
 
@@ -404,11 +416,19 @@ def build_startup_journey_graph_v2():
     graph_dict[seriesb_exit_dist] = {
         "payoff": 0,
         "after": [
-            {"node_id": seriesb_acquihire_node, "cost": 0, "weight": seriesb_exit_types["acquihire"]},
-            {"node_id": seriesb_acquisition_node, "cost": 0, "weight": seriesb_exit_types["acquisition"]},
+            {
+                "node_id": seriesb_acquihire_node,
+                "cost": 0,
+                "weight": seriesb_exit_types["acquihire"],
+            },
+            {
+                "node_id": seriesb_acquisition_node,
+                "cost": 0,
+                "weight": seriesb_exit_types["acquisition"],
+            },
             {"node_id": seriesb_ipo_node, "cost": 0, "weight": seriesb_exit_types["ipo"]},
             {"node_id": seriesb_mega_node, "cost": 0, "weight": seriesb_exit_types["mega"]},
-        ]
+        ],
     }
     node_id += 1
 
@@ -417,10 +437,14 @@ def build_startup_journey_graph_v2():
     graph_dict[seriesc_exit_dist] = {
         "payoff": 0,
         "after": [
-            {"node_id": seriesc_acquisition_node, "cost": 0, "weight": seriesc_exit_types["acquisition"]},
+            {
+                "node_id": seriesc_acquisition_node,
+                "cost": 0,
+                "weight": seriesc_exit_types["acquisition"],
+            },
             {"node_id": seriesc_ipo_node, "cost": 0, "weight": seriesc_exit_types["ipo"]},
             {"node_id": seriesc_mega_node, "cost": 0, "weight": seriesc_exit_types["mega"]},
-        ]
+        ],
     }
     node_id += 1
 
@@ -435,7 +459,7 @@ def build_startup_journey_graph_v2():
         "after": [
             {"node_id": seriesc_exit_dist, "cost": 0, "weight": seriesc_exit},  # 90% exit
             {"node_id": seriesc_winddown, "cost": 0, "weight": 1 - seriesc_exit},  # 10% fail
-        ]
+        ],
     }
     node_id += 1
 
@@ -444,10 +468,18 @@ def build_startup_journey_graph_v2():
     graph_dict[seriesb_decision] = {
         "payoff": 0,
         "after": [
-            {"node_id": seriesc_decision, "cost": seriesc_investment, "weight": seriesb_continue},  # 60% → Series C
+            {
+                "node_id": seriesc_decision,
+                "cost": seriesc_investment,
+                "weight": seriesb_continue,
+            },  # 60% → Series C
             {"node_id": seriesb_exit_dist, "cost": 0, "weight": seriesb_exit},  # 30% exit
-            {"node_id": seriesb_winddown, "cost": 0, "weight": 1 - seriesb_continue - seriesb_exit},  # 10% fail
-        ]
+            {
+                "node_id": seriesb_winddown,
+                "cost": 0,
+                "weight": 1 - seriesb_continue - seriesb_exit,
+            },  # 10% fail
+        ],
     }
     node_id += 1
 
@@ -456,10 +488,18 @@ def build_startup_journey_graph_v2():
     graph_dict[seriesa_decision] = {
         "payoff": 0,
         "after": [
-            {"node_id": seriesb_decision, "cost": seriesb_investment, "weight": seriesa_continue},  # 55% → Series B
+            {
+                "node_id": seriesb_decision,
+                "cost": seriesb_investment,
+                "weight": seriesa_continue,
+            },  # 55% → Series B
             {"node_id": seriesa_exit_dist, "cost": 0, "weight": seriesa_exit},  # 15% exit
-            {"node_id": seriesa_winddown, "cost": 0, "weight": 1 - seriesa_continue - seriesa_exit},  # 30% fail
-        ]
+            {
+                "node_id": seriesa_winddown,
+                "cost": 0,
+                "weight": 1 - seriesa_continue - seriesa_exit,
+            },  # 30% fail
+        ],
     }
     node_id += 1
 
@@ -468,10 +508,18 @@ def build_startup_journey_graph_v2():
     graph_dict[seed_decision] = {
         "payoff": 0,
         "after": [
-            {"node_id": seriesa_decision, "cost": seriesa_investment, "weight": seed_continue},  # 18% → Series A
+            {
+                "node_id": seriesa_decision,
+                "cost": seriesa_investment,
+                "weight": seed_continue,
+            },  # 18% → Series A
             {"node_id": seed_exit_dist, "cost": 0, "weight": seed_exit},  # 7% exit
-            {"node_id": seed_winddown, "cost": 0, "weight": 1 - seed_continue - seed_exit},  # 75% fail (THE CRUNCH)
-        ]
+            {
+                "node_id": seed_winddown,
+                "cost": 0,
+                "weight": 1 - seed_continue - seed_exit,
+            },  # 75% fail (THE CRUNCH)
+        ],
     }
     node_id += 1
 
@@ -480,10 +528,18 @@ def build_startup_journey_graph_v2():
     graph_dict[preseed_decision] = {
         "payoff": 0,
         "after": [
-            {"node_id": seed_decision, "cost": seed_investment, "weight": preseed_continue},  # 35% → Seed
+            {
+                "node_id": seed_decision,
+                "cost": seed_investment,
+                "weight": preseed_continue,
+            },  # 35% → Seed
             {"node_id": preseed_exit_dist, "cost": 0, "weight": preseed_exit},  # 5% exit
-            {"node_id": preseed_winddown, "cost": 0, "weight": 1 - preseed_continue - preseed_exit},  # 60% fail
-        ]
+            {
+                "node_id": preseed_winddown,
+                "cost": 0,
+                "weight": 1 - preseed_continue - preseed_exit,
+            },  # 60% fail
+        ],
     }
     node_id += 1
 
@@ -491,9 +547,7 @@ def build_startup_journey_graph_v2():
     start_node = node_id
     graph_dict[start_node] = {
         "payoff": 0,
-        "after": [
-            {"node_id": preseed_decision, "cost": preseed_investment, "weight": 1.0}
-        ]
+        "after": [{"node_id": preseed_decision, "cost": preseed_investment, "weight": 1.0}],
     }
 
     g.from_dict(graph_dict)
@@ -547,8 +601,8 @@ def run_simulation(num_trials=250000):
     expected_value = np.mean(outcomes)
     print(f"Expected Value (EV): ${expected_value:.2f}M")
     if expected_value > 0:
-        print(f"  → Individual startups have POSITIVE expected value")
-        print(f"  → But median is still negative (power law dynamics)")
+        print("  → Individual startups have POSITIVE expected value")
+        print("  → But median is still negative (power law dynamics)")
     print()
 
     # Outcome distribution
@@ -594,10 +648,16 @@ def run_simulation(num_trials=250000):
         top_10pct_returns = np.sum(sorted_outcomes[:top_10pct_idx])
         total_returns = np.sum(successful_outcomes)
 
-        print(f"  Of successful exits:")
-        print(f"    Top 1% contribute:   {top_1pct_returns/total_returns*100:>5.1f}% of total returns")
-        print(f"    Top 5% contribute:   {top_5pct_returns/total_returns*100:>5.1f}% of total returns")
-        print(f"    Top 10% contribute:  {top_10pct_returns/total_returns*100:>5.1f}% of total returns")
+        print("  Of successful exits:")
+        print(
+            f"    Top 1% contribute:   {top_1pct_returns/total_returns*100:>5.1f}% of total returns"
+        )
+        print(
+            f"    Top 5% contribute:   {top_5pct_returns/total_returns*100:>5.1f}% of total returns"
+        )
+        print(
+            f"    Top 10% contribute:  {top_10pct_returns/total_returns*100:>5.1f}% of total returns"
+        )
         print()
         print("  This extreme concentration is the POWER LAW in action")
         print("  Continuous LogNormal distributions create realistic variation")
@@ -693,7 +753,9 @@ def distribution_analysis(num_trials=250000):
     print()
     if median_outcome != 0:
         print(f"Mean / Median Ratio: {abs(mean_outcome / median_outcome):.1f}x")
-        print(f"  → Mean is {abs(mean_outcome / median_outcome):.1f}x median: CLASSIC POWER LAW SIGNATURE")
+        print(
+            f"  → Mean is {abs(mean_outcome / median_outcome):.1f}x median: CLASSIC POWER LAW SIGNATURE"
+        )
     print()
 
     print("Percentile Distribution:")
@@ -789,7 +851,7 @@ def distribution_analysis(num_trials=250000):
             fontsize=10,
             verticalalignment="top",
             horizontalalignment="right",
-            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+            bbox={"boxstyle": "round", "facecolor": "wheat", "alpha": 0.5},
         )
 
         # Bottom plot: Right tail only (winners)
@@ -814,12 +876,13 @@ def distribution_analysis(num_trials=250000):
             fontsize=10,
             verticalalignment="top",
             horizontalalignment="right",
-            bbox=dict(boxstyle="round", facecolor="lightgreen", alpha=0.5),
+            bbox={"boxstyle": "round", "facecolor": "lightgreen", "alpha": 0.5},
         )
 
         plt.tight_layout()
 
         import os
+
         output_path = os.path.join(os.path.dirname(__file__), "distribution_analysis.png")
         plt.savefig(output_path, dpi=150, bbox_inches="tight")
         print(f"✓ Histogram saved to: {output_path}")
@@ -827,7 +890,7 @@ def distribution_analysis(num_trials=250000):
 
         try:
             plt.show()
-        except:
+        except Exception:
             pass
 
     except ImportError:

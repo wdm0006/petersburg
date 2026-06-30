@@ -111,17 +111,13 @@ if __name__ == "__main__":
     print(f"Worst Outcome: ${min_outcome:.2f}")
     print()
     print("INTERPRETATION:")
-    print(
-        f"  Starting with $1,000 and paying ${entrance_fee} per game, your bankroll"
-    )
-    print("  changes by an average of ${:.2f} after 1,000 games.".format(mean_outcome))
+    print(f"  Starting with $1,000 and paying ${entrance_fee} per game, your bankroll")
+    print(f"  changes by an average of ${mean_outcome:.2f} after 1,000 games.")
     print()
     if mean_outcome < 0:
         print("  Despite 'infinite' theoretical EV, you LOSE money on average!")
         print("  This is the paradox: theory vs. reality with finite constraints.")
     else:
         print("  You make money on average, but with high variance.")
-        print(
-            f"  Best case: +${max_outcome:.2f} | Worst case: ${min_outcome:.2f} (ruin)"
-        )
+        print(f"  Best case: +${max_outcome:.2f} | Worst case: ${min_outcome:.2f} (ruin)")
     print("=" * 70)

@@ -11,8 +11,9 @@ These node types are useful for modeling real-world scenarios where outcomes
 are uncertain and follow known statistical distributions.
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+
 from petersburg import Graph
 
 # Example 1: Investment with Uncertain Returns
@@ -154,7 +155,9 @@ for name, outcomes in [
     std_roi = np.std(outcomes)
     p90 = np.percentile(outcomes, 90)
     p10 = np.percentile(outcomes, 10)
-    print(f"{name:<20} ${mean_roi:>7.2f}        ${std_roi:>7.2f}        ${p90:>7.2f}        ${p10:>7.2f}")
+    print(
+        f"{name:<20} ${mean_roi:>7.2f}        ${std_roi:>7.2f}        ${p90:>7.2f}        ${p10:>7.2f}"
+    )
 
 print("\nKey Insights:")
 print("- Safe Bond: Guaranteed 5% return ($500)")
@@ -253,9 +256,7 @@ proj_c_outcomes = [proj_c_graph.get_outcome() for _ in range(num_simulations)]
 
 print("\nR&D Project Analysis ($50,000 investment each):")
 print("-" * 80)
-print(
-    f"{'Project':<20} {'Mean NPV':<15} {'Std Dev':<15} {'Max Outcome':<15} {'Min Outcome':<15}"
-)
+print(f"{'Project':<20} {'Mean NPV':<15} {'Std Dev':<15} {'Max Outcome':<15} {'Min Outcome':<15}")
 print("-" * 80)
 
 for name, outcomes in [
@@ -289,8 +290,12 @@ axes[0, 0].legend()
 axes[0, 0].grid(True, alpha=0.3)
 
 # Plot 2: High-Risk Investment Distributions
-axes[0, 1].hist(startup_outcomes, bins=100, alpha=0.6, label="Startup", density=True, range=(-15000, 50000))
-axes[0, 1].hist(vc_outcomes, bins=100, alpha=0.6, label="VC Fund", density=True, range=(-15000, 50000))
+axes[0, 1].hist(
+    startup_outcomes, bins=100, alpha=0.6, label="Startup", density=True, range=(-15000, 50000)
+)
+axes[0, 1].hist(
+    vc_outcomes, bins=100, alpha=0.6, label="VC Fund", density=True, range=(-15000, 50000)
+)
 axes[0, 1].set_xlabel("Net Return ($)")
 axes[0, 1].set_ylabel("Probability Density")
 axes[0, 1].set_title("High-Risk Investments: Heavy Tails")

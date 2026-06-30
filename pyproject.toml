@@ -10,7 +10,7 @@ readme = "README.md"
 authors = [
     {name = "Will McGinnis", email = "will@mcginniscommawill.com"}
 ]
-license = "BSD-3-Clause"
+license = {text = "BSD-3-Clause"}
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

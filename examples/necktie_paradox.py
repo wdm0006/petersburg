@@ -75,21 +75,15 @@ if __name__ == "__main__":
     g.from_dict(
         {
             1: {"payoff": 0, "after": []},  # Terminal node
-            2: {
-                "payoff": 0,
-                "after": [{"node_id": 1, "cost": 40}]  # Cost: $40 payment to winner
-            },
-            3: {
-                "payoff": 0,
-                "after": [{"node_id": 1, "cost": 50}]  # Cost: $50 payment to winner
-            },
+            2: {"payoff": 0, "after": [{"node_id": 1, "cost": 40}]},  # Cost: $40 payment to winner
+            3: {"payoff": 0, "after": [{"node_id": 1, "cost": 50}]},  # Cost: $50 payment to winner
             4: {
                 "payoff": 50,  # Win $50 (value of your tie)
-                "after": [{"node_id": 2, "cost": 0}]  # Pay $40 to other player → net $10
+                "after": [{"node_id": 2, "cost": 0}],  # Pay $40 to other player → net $10
             },
             5: {
                 "payoff": 40,  # Win $40 (value of your tie)
-                "after": [{"node_id": 3, "cost": 0}]  # Pay $50 to other player → net -$10
+                "after": [{"node_id": 3, "cost": 0}],  # Pay $50 to other player → net -$10
             },
         }
     )
@@ -132,7 +126,9 @@ if __name__ == "__main__":
     ax = df.plot(kind="line", x="iters", y="outcome", label="Expected Value", color="blue")
 
     # Add min/max markers to show variance
-    df.plot(ax=ax, kind="scatter", x="iters", y="min", s=100, marker="+", color="red", label="Min/Max")
+    df.plot(
+        ax=ax, kind="scatter", x="iters", y="min", s=100, marker="+", color="red", label="Min/Max"
+    )
     df.plot(ax=ax, kind="scatter", x="iters", y="max", s=100, marker="+", color="red")
 
     # Configure the plot
@@ -142,7 +138,7 @@ if __name__ == "__main__":
     plt.xscale("log")  # Log scale shows convergence more clearly
     plt.grid(True, color="w", linestyle="-", linewidth=1)
     plt.gca().patch.set_facecolor("0.8")
-    plt.axhline(y=0, color='black', linestyle='--', linewidth=2, label="Fair Game (EV=0)")
+    plt.axhline(y=0, color="black", linestyle="--", linewidth=2, label="Fair Game (EV=0)")
     plt.legend()
 
     print()
