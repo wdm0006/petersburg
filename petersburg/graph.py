@@ -668,11 +668,12 @@ class Graph:
 
         # bastardization
         plt.figure()
-        pos = nx.pygraphviz_layout(
+        pos = nx.nx_agraph.graphviz_layout(
             g, prog="dot", args='-Nfontsize=10 -Nwidth=".2" -Nheight=".2" -Nmargin=0 -Gfontsize=8'
         )
         nx.draw(g, pos=pos)
         # edge_labels = nx.get_edge_attributes(g, 'weight')
         # print(edge_labels)
         # nx.draw_networkx_edge_labels(g, pos, labels=edge_labels)
-        plt.show()
+        plt.savefig(filename)
+        plt.close()
