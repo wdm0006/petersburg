@@ -2,7 +2,9 @@
 Tests for distribution-based node types.
 """
 
+import math
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -182,6 +184,104 @@ class TestDistributionNodes(unittest.TestCase):
         # Should always return exactly 80
         outcomes = [g.get_outcome() for _ in range(10)]
         self.assertTrue(all(o == 80 for o in outcomes))
+
+
+class TestPayoffSensitivity(unittest.TestCase):
+    """Payoff sensitivity scales fixed and stochastic node samples."""
+
+    def _analyze(self, node_spec):
+        graph = Graph().from_dict({1: {**node_spec, "after": []}})
+        result = graph.analyze_sensitivity(
+            parameter_type="payoffs", num_simulations=1, perturbation=0.1
+        )
+        return graph.start_node, result["results"][0]
+
+    def test_fixed_payoff_sensitivity(self):
+        node, result = self._analyze({"type": "fixed", "payoff": 100})
+
+        self.assertEqual(result["baseline_ev"], 100)
+        self.assertAlmostEqual(result["increased_ev"], 110)
+        self.assertAlmostEqual(result["decreased_ev"], 90)
+        self.assertAlmostEqual(result["sensitivity"], 10)
+        self.assertEqual(node.payoff, 100)
+
+    def test_uniform_payoff_sensitivity_scales_bounds(self):
+        draws = []
+
+        def uniform(low, high):
+            draws.append((low, high))
+            return (low + high) / 2
+
+        with patch("numpy.random.uniform", side_effect=uniform):
+            node, result = self._analyze({"type": "uniform", "min_payoff": 10, "max_payoff": 20})
+
+        self.assertEqual(draws, [(10, 20), (11, 22), (9, 18)])
+        self.assertAlmostEqual(result["increased_ev"], result["baseline_ev"] * 1.1)
+        self.assertAlmostEqual(result["decreased_ev"], result["baseline_ev"] * 0.9)
+        self.assertEqual((node.min_payoff, node.max_payoff, node.payoff), (10, 20, 15))
+
+    def test_gaussian_payoff_sensitivity_preserves_relative_spread(self):
+        draws = []
+
+        def normal(mean, std):
+            draws.append((mean, std))
+            return mean + std
+
+        with patch("numpy.random.normal", side_effect=normal):
+            node, result = self._analyze({"type": "gaussian", "mean": 100, "std": 10})
+
+        expected_draws = [(100, 10), (110, 11), (90, 9)]
+        for actual, expected in zip(draws, expected_draws):
+            self.assertAlmostEqual(actual[0], expected[0])
+            self.assertAlmostEqual(actual[1], expected[1])
+        self.assertAlmostEqual(result["increased_ev"], result["baseline_ev"] * 1.1)
+        self.assertAlmostEqual(result["decreased_ev"], result["baseline_ev"] * 0.9)
+        self.assertEqual((node.mean, node.std, node.payoff), (100, 10, 100))
+
+    def test_lognormal_payoff_sensitivity_preserves_sigma(self):
+        draws = []
+
+        def lognormal(mu, sigma):
+            draws.append((mu, sigma))
+            return math.exp(mu + sigma)
+
+        with patch("numpy.random.lognormal", side_effect=lognormal):
+            node, result = self._analyze({"type": "lognormal", "mu": 2, "sigma": 0.5})
+
+        self.assertAlmostEqual(draws[1][0], 2 + math.log(1.1))
+        self.assertAlmostEqual(draws[2][0], 2 + math.log(0.9))
+        self.assertEqual([sigma for _, sigma in draws], [0.5, 0.5, 0.5])
+        self.assertAlmostEqual(result["increased_ev"], result["baseline_ev"] * 1.1)
+        self.assertAlmostEqual(result["decreased_ev"], result["baseline_ev"] * 0.9)
+        self.assertEqual((node.mu, node.sigma), (2, 0.5))
+        self.assertAlmostEqual(node.payoff, math.exp(2 + 0.5**2 / 2))
+
+    def test_powerlaw_payoff_sensitivity_preserves_alpha(self):
+        alphas = []
+
+        def pareto(alpha):
+            alphas.append(alpha)
+            return 0.5
+
+        with patch("numpy.random.pareto", side_effect=pareto):
+            node, result = self._analyze({"type": "powerlaw", "scale": 10, "alpha": 3})
+
+        self.assertEqual(alphas, [3, 3, 3])
+        self.assertAlmostEqual(result["increased_ev"], result["baseline_ev"] * 1.1)
+        self.assertAlmostEqual(result["decreased_ev"], result["baseline_ev"] * 0.9)
+        self.assertEqual((node.scale, node.alpha, node.payoff), (10, 3, 15))
+
+    def test_parameters_are_restored_when_simulation_raises(self):
+        graph = Graph().from_dict({1: {"type": "gaussian", "mean": 100, "std": 10, "after": []}})
+        node = graph.start_node
+
+        with patch("numpy.random.normal", side_effect=[100, RuntimeError("draw failed")]):
+            with self.assertRaisesRegex(RuntimeError, "draw failed"):
+                graph.analyze_sensitivity(
+                    parameter_type="payoffs", num_simulations=1, perturbation=0.1
+                )
+
+        self.assertEqual((node.mean, node.std, node.payoff), (100, 10, 100))
 
 
 if __name__ == "__main__":

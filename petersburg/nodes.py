@@ -8,7 +8,9 @@
 
 """
 
+import math
 import random
+from contextlib import contextmanager
 
 import numpy as np
 
@@ -42,6 +44,26 @@ class Node:
         :return: float
         """
         return self.payoff
+
+    def _payoff_parameters(self):
+        return {"payoff": self.payoff}
+
+    def _scale_payoff(self, factor):
+        self.payoff *= factor
+
+    @contextmanager
+    def scaled_payoff(self, factor):
+        """Temporarily scale sampled payoffs by a positive factor."""
+        if factor <= 0:
+            raise ValueError("payoff scale factor must be positive")
+
+        original_parameters = self._payoff_parameters()
+        try:
+            self._scale_payoff(factor)
+            yield
+        finally:
+            for parameter, value in original_parameters.items():
+                setattr(self, parameter, value)
 
     def add_outcome(self, node, cost=0, weight=1, classifier=None):
         """
@@ -164,6 +186,18 @@ class UniformNode(Node):
         """
         return np.random.uniform(self.min_payoff, self.max_payoff)
 
+    def _payoff_parameters(self):
+        return {
+            "payoff": self.payoff,
+            "min_payoff": self.min_payoff,
+            "max_payoff": self.max_payoff,
+        }
+
+    def _scale_payoff(self, factor):
+        self.payoff *= factor
+        self.min_payoff *= factor
+        self.max_payoff *= factor
+
 
 class GaussianNode(Node):
     """
@@ -191,6 +225,14 @@ class GaussianNode(Node):
         :return: float drawn from N(mean, std^2)
         """
         return np.random.normal(self.mean, self.std)
+
+    def _payoff_parameters(self):
+        return {"payoff": self.payoff, "mean": self.mean, "std": self.std}
+
+    def _scale_payoff(self, factor):
+        self.payoff *= factor
+        self.mean *= factor
+        self.std *= factor
 
 
 class LogNormalNode(Node):
@@ -222,6 +264,13 @@ class LogNormalNode(Node):
         """
         return np.random.lognormal(self.mu, self.sigma)
 
+    def _payoff_parameters(self):
+        return {"payoff": self.payoff, "mu": self.mu, "sigma": self.sigma}
+
+    def _scale_payoff(self, factor):
+        self.payoff *= factor
+        self.mu += math.log(factor)
+
 
 class PowerLawNode(Node):
     """
@@ -251,3 +300,10 @@ class PowerLawNode(Node):
         :return: float drawn from Pareto(scale, alpha)
         """
         return (np.random.pareto(self.alpha) + 1) * self.scale
+
+    def _payoff_parameters(self):
+        return {"payoff": self.payoff, "scale": self.scale, "alpha": self.alpha}
+
+    def _scale_payoff(self, factor):
+        self.payoff *= factor
+        self.scale *= factor

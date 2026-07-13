@@ -506,21 +506,18 @@ class Graph:
                 original_payoff = node.payoff
 
                 # Test increased payoff
-                node.payoff = original_payoff * (1 + perturbation)
-                increased_outcomes = []
-                for _ in range(num_simulations):
-                    increased_outcomes.append(self.get_outcome())
-                increased_ev = np.mean(increased_outcomes)
+                with node.scaled_payoff(1 + perturbation):
+                    increased_outcomes = []
+                    for _ in range(num_simulations):
+                        increased_outcomes.append(self.get_outcome())
+                    increased_ev = np.mean(increased_outcomes)
 
                 # Test decreased payoff
-                node.payoff = original_payoff * (1 - perturbation)
-                decreased_outcomes = []
-                for _ in range(num_simulations):
-                    decreased_outcomes.append(self.get_outcome())
-                decreased_ev = np.mean(decreased_outcomes)
-
-                # Restore original payoff
-                node.payoff = original_payoff
+                with node.scaled_payoff(1 - perturbation):
+                    decreased_outcomes = []
+                    for _ in range(num_simulations):
+                        decreased_outcomes.append(self.get_outcome())
+                    decreased_ev = np.mean(decreased_outcomes)
 
                 sensitivity = (
                     abs(increased_ev - baseline_ev) + abs(decreased_ev - baseline_ev)
