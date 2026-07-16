@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 
-from petersburg import Graph
+from petersburg import Graph, Node
 
 __author__ = "willmcginnis"
 
@@ -162,6 +162,42 @@ class TestGetOptions(unittest.TestCase):
         self.assertEqual(options[2]["mean"], 95.0)
         self.assertEqual(options[2]["max"], 95)
         self.assertEqual(options[2]["min"], 95)
+
+    def test_classifier_weights_receive_feature_vector(self):
+        class FeatureClassifier:
+            def __init__(self, selected_value):
+                self.selected_value = selected_value
+
+            def predict_proba(self, feature_vector):
+                if feature_vector is None:
+                    raise ValueError("feature_vector required")
+                probability = float(feature_vector[0][0] == self.selected_value)
+                return np.array([[1 - probability, probability]])
+
+        g = Graph()
+        start = Node(0)
+        option_a = Node(1, payoff=5)
+        option_b = Node(2, payoff=10)
+        option_a.add_outcome(Node(3, payoff=100), classifier=FeatureClassifier(1))
+        option_a.add_outcome(Node(4, payoff=-100), classifier=FeatureClassifier(0))
+        option_b.add_outcome(Node(5, payoff=20), classifier=FeatureClassifier(1))
+        option_b.add_outcome(Node(6, payoff=-20), classifier=FeatureClassifier(0))
+        start.add_outcome(option_a, cost=5)
+        start.add_outcome(option_b, cost=2)
+        g.start_node = start
+
+        feature_vector = np.array([[1]])
+        options = g.get_options(iters=5, feature_vector=feature_vector)
+        self.assertEqual(options, {1: 100.0, 2: 28.0})
+
+        extended = g.get_options(iters=5, extended_stats=True, feature_vector=feature_vector)
+        self.assertEqual(
+            extended,
+            {
+                1: {"mean": 100.0, "max": 100, "min": 100, "count": 5},
+                2: {"mean": 28.0, "max": 28, "min": 28, "count": 5},
+            },
+        )
 
 
 class TestFromAdjMatrix(unittest.TestCase):
