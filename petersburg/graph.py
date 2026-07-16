@@ -104,6 +104,11 @@ class Graph:
         # list specified for each, and add the connections that create the graph.
         for key in d:
             for edge in d[key]["after"]:
+                if edge["node_id"] not in node_list:
+                    raise AttributeError(
+                        f"Node {key} lists unknown predecessor node_id {edge['node_id']} "
+                        f"in its 'after' list"
+                    )
                 node_list[edge["node_id"]].add_outcome(
                     node_list[key], cost=edge.get("cost", 0), weight=edge.get("weight", 1)
                 )
@@ -112,7 +117,14 @@ class Graph:
 
     def from_adj_matrix(self, A, labels=None, clf_matrix=None):
         """
-        Takes in a numpy adjacency matrix and forms a petersburg graph from it (of type [col -> row]).
+        Takes in a numpy adjacency matrix and forms a petersburg graph from it.
+
+        The matrix is of type [row -> col]: a nonzero, non-NaN entry A[r, c] creates an edge
+        from node r to node c, whose weight is A[r, c] normalized by the sum of row r. A
+        synthetic root node with id -1 is injected and becomes the graph's start node,
+        connecting to every node that has no predecessors.
+
+        So ``A[0, 1] = 1`` builds the chain -1 -> 0 -> 1.
 
         :param A:
         :return:

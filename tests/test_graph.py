@@ -52,6 +52,20 @@ class TestGraphFromDict(unittest.TestCase):
                 }
             )
 
+    def test_from_dict_dangling_after_reference_raises_descriptive_error(self):
+        g = Graph()
+        with self.assertRaises(AttributeError) as ctx:
+            g.from_dict(
+                {
+                    1: {"payoff": 0, "after": []},
+                    2: {"payoff": 50, "after": [{"node_id": 99, "cost": 10}]},
+                }
+            )
+        message = str(ctx.exception)
+        self.assertIn("2", message)
+        self.assertIn("99", message)
+        self.assertIn("after", message)
+
 
 class TestGetOutcome(unittest.TestCase):
     """Single-walk simulation through the graph."""
@@ -184,6 +198,17 @@ class TestFromAdjMatrix(unittest.TestCase):
 
         # Deterministic chain -1 -> 0 -> 1 terminates at node 1.
         self.assertEqual(g.get_outcome_node(), 1)
+
+    def test_nonzero_entry_points_row_to_col(self):
+        # A[0, 1] = 1 is the only transition, so the graph is the chain -1 -> 0 -> 1.
+        A = np.zeros((2, 2))
+        A[0, 1] = 1.0
+        g = Graph()
+        g.from_adj_matrix(A)
+
+        self.assertEqual({n.node_id for n in g.node_list()}, {-1, 0, 1})
+        edges = {(e.from_node.node_id, e.to_node.node_id) for e in g.edge_list()}
+        self.assertEqual(edges, {(-1, 0), (0, 1)})
 
     def test_non_square_matrix_raises(self):
         g = Graph()

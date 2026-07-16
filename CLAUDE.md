@@ -95,7 +95,8 @@ Example structure:
 
 ### Adjacency Matrix Convention
 
-Matrices follow the convention: `A[row, col]` means edge from `col` to `row`. The `from_adj_matrix()` method:
+Matrices follow the convention: a nonzero `A[row, col]` means an edge from `row` to `col`, so
+`A[0, 1] = 1` builds the chain `-1 -> 0 -> 1`. The `from_adj_matrix()` method:
 - Normalizes weights by row sums
 - Automatically adds a root node (ID: -1)
 - Supports optional `clf_matrix` for classifier-based edge weights
