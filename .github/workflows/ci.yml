@@ -52,13 +52,6 @@ jobs:
       run: |
         uv run pytest
 
-    - name: Upload coverage reports
-      if: matrix.python-version == '3.12'
-      uses: codecov/codecov-action@v5
-      with:
-        file: ./htmlcov/index.html
-        fail_ci_if_error: false
-
   build:
     runs-on: ubuntu-latest
     steps:
