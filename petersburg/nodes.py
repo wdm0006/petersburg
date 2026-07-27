@@ -139,17 +139,26 @@ class Node:
             return {self.__repr__(): blob}
 
     def get_nodes(self, node_list):
-        node_list.update({self})
-        if self.outcomes != []:
-            for outcome in self.outcomes:
-                node_list.update(outcome[0].to_node.get_nodes(node_list))
+        if self in node_list:
+            return node_list
+
+        node_list.add(self)
+        for outcome in self.outcomes:
+            outcome[0].to_node.get_nodes(node_list)
         return node_list
 
-    def get_edges(self, edge_list):
-        if self.outcomes != []:
-            for outcome in self.outcomes:
-                edge_list.update({outcome[0]})
-                edge_list.update(outcome[0].to_node.get_edges(edge_list))
+    def get_edges(self, edge_list, visited=None):
+        # a node can be reached by several distinct edges, so edge_list cannot
+        # double as the visited marker
+        if visited is None:
+            visited = set()
+        if self in visited:
+            return edge_list
+
+        visited.add(self)
+        for outcome in self.outcomes:
+            edge_list.add(outcome[0])
+            outcome[0].to_node.get_edges(edge_list, visited)
         return edge_list
 
     def __str__(self):
