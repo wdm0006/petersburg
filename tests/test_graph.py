@@ -2,9 +2,11 @@
 Tests for the core Graph API: construction, simulation, options, and export.
 """
 
+import io
 import random
 import time
 import unittest
+from contextlib import redirect_stdout
 
 import numpy as np
 
@@ -386,6 +388,123 @@ class TestToMermaid(unittest.TestCase):
             }
         )
         self.assertTrue(g.to_mermaid(orientation="TD").startswith("graph TD"))
+
+
+class TestSensitivityParameterSelection(unittest.TestCase):
+    """max_params selection is deterministic and reported rather than silent."""
+
+    LEAF_IDS = list(range(1, 13))
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _wide_graph(self, costs=None):
+        """Start node 0 with twelve leaves, each reached by its own weighted edge."""
+        spec = {0: {"payoff": 0, "after": []}}
+        for node_id in self.LEAF_IDS:
+            cost = node_id if costs is None else costs[node_id]
+            spec[node_id] = {
+                "payoff": 10 * node_id,
+                "after": [{"node_id": 0, "cost": cost, "weight": node_id}],
+            }
+        return Graph().from_dict(spec)
+
+    def _analyze(self, graph, parameter_type, **kwargs):
+        return graph.analyze_sensitivity(
+            parameter_type=parameter_type, num_simulations=1, perturbation=0.1, **kwargs
+        )
+
+    def test_edge_weight_selection_is_deterministic(self):
+        # Candidates are sorted by (str(from_id), str(to_id), str(cost)), so the ten
+        # analyzed edges are the same on every run and in every process.
+        expected = sorted(f"Edge 0→{n} weight" for n in [1, 10, 11, 12, 2, 3, 4, 5, 6, 7])
+
+        for _ in range(3):
+            result = self._analyze(self._wide_graph(), "edge_weights")
+            self.assertEqual(sorted(r["parameter"] for r in result["results"]), expected)
+
+    def test_cost_selection_is_deterministic(self):
+        expected = sorted(f"Edge 0→{n} cost" for n in [1, 10, 11, 12, 2, 3, 4, 5, 6, 7])
+
+        for _ in range(3):
+            result = self._analyze(self._wide_graph(), "costs")
+            self.assertEqual(sorted(r["parameter"] for r in result["results"]), expected)
+
+    def test_payoff_selection_is_deterministic(self):
+        expected = sorted(f"Node {n} payoff" for n in [1, 10, 11, 12, 2, 3, 4, 5, 6, 7])
+
+        for _ in range(3):
+            result = self._analyze(self._wide_graph(), "payoffs")
+            self.assertEqual(sorted(r["parameter"] for r in result["results"]), expected)
+
+    def test_candidate_and_analyzed_counts_are_reported(self):
+        for parameter_type in ("edge_weights", "costs", "payoffs"):
+            result = self._analyze(self._wide_graph(), parameter_type)
+            self.assertEqual(result["candidate_parameters"], 12)
+            self.assertEqual(result["parameters_analyzed"], 10)
+            self.assertEqual(result["parameters_analyzed"], len(result["results"]))
+            self.assertEqual(result["max_params"], 10)
+
+    def test_max_params_can_be_raised_or_lifted(self):
+        raised = self._analyze(self._wide_graph(), "edge_weights", max_params=20)
+        self.assertEqual(raised["parameters_analyzed"], 12)
+
+        unlimited = self._analyze(self._wide_graph(), "edge_weights", max_params=None)
+        self.assertEqual(unlimited["parameters_analyzed"], 12)
+
+        lowered = self._analyze(self._wide_graph(), "edge_weights", max_params=3)
+        self.assertEqual(lowered["candidate_parameters"], 12)
+        self.assertEqual(lowered["parameters_analyzed"], 3)
+
+    def test_ineligible_parameters_do_not_consume_the_cap(self):
+        # The first four edges in sort order are free, so they are not cost candidates
+        # at all and must not eat slots that eligible edges could use.
+        costs = {n: (0 if n in (1, 10, 11, 12) else n) for n in self.LEAF_IDS}
+        result = self._analyze(self._wide_graph(costs=costs), "costs")
+
+        self.assertEqual(result["candidate_parameters"], 8)
+        self.assertEqual(result["parameters_analyzed"], 8)
+        self.assertEqual(
+            sorted(r["parameter"] for r in result["results"]),
+            sorted(f"Edge 0→{n} cost" for n in [2, 3, 4, 5, 6, 7, 8, 9]),
+        )
+
+    def test_identify_critical_parameters_honours_max_params(self):
+        capped = self._wide_graph().identify_critical_parameters(
+            num_simulations=1, perturbation=0.1, top_n=5
+        )
+        self.assertEqual(capped["max_params"], 10)
+        self.assertEqual(capped["total_candidate_parameters"], 36)
+        self.assertEqual(capped["total_parameters_analyzed"], 30)
+
+        lifted = self._wide_graph().identify_critical_parameters(
+            num_simulations=1, perturbation=0.1, top_n=5, max_params=None
+        )
+        self.assertEqual(lifted["total_candidate_parameters"], 36)
+        self.assertEqual(lifted["total_parameters_analyzed"], 36)
+
+    def test_report_states_when_parameters_were_excluded(self):
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            self._wide_graph().print_sensitivity_report(
+                num_simulations=1, perturbation=0.1, top_n=3
+            )
+        capped = buffer.getvalue()
+
+        self.assertIn("Parameters Analyzed: 30 of 36", capped)
+        self.assertIn("6 parameter(s) excluded by max_params=10", capped)
+        self.assertNotIn("Total Parameters Analyzed", capped)
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            self._wide_graph().print_sensitivity_report(
+                num_simulations=1, perturbation=0.1, top_n=3, max_params=None
+            )
+        full = buffer.getvalue()
+
+        self.assertIn("Parameters Analyzed: 36 of 36", full)
+        self.assertNotIn("excluded by max_params", full)
 
 
 if __name__ == "__main__":

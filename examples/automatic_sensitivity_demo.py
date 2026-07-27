@@ -85,7 +85,10 @@ if __name__ == "__main__":
     results = g.identify_critical_parameters(num_simulations=1000, perturbation=0.10, top_n=3)
 
     print(f"Baseline EV: ${results['baseline_ev']:.2f}")
-    print(f"Total parameters analyzed: {results['total_parameters_analyzed']}")
+    print(
+        f"Parameters analyzed: {results['total_parameters_analyzed']} "
+        f"of {results['total_candidate_parameters']}"
+    )
     print()
     print("Top 3 parameters:")
     for i, param in enumerate(results["top_parameters"], 1):
@@ -104,7 +107,10 @@ if __name__ == "__main__":
         parameter_type="edge_weights", num_simulations=1000, perturbation=0.10, max_params=10
     )
 
-    print(f"Analyzed {len(weight_analysis['results'])} edge weights")
+    print(
+        f"Analyzed {weight_analysis['parameters_analyzed']} "
+        f"of {weight_analysis['candidate_parameters']} edge weights"
+    )
     print()
     print("Top 3 most sensitive edge weights:")
     for i, result in enumerate(weight_analysis["results"][:3], 1):
