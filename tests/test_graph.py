@@ -3,6 +3,7 @@ Tests for the core Graph API: construction, simulation, options, and export.
 """
 
 import random
+import time
 import unittest
 
 import numpy as np
@@ -250,6 +251,69 @@ class TestFromAdjMatrix(unittest.TestCase):
         g = Graph()
         with self.assertRaises(ValueError):
             g.from_adj_matrix(np.zeros((2, 3)))
+
+
+def _layered_spec(layers, width):
+    """Build a from_dict spec: a start node followed by `layers` fully-connected layers of `width` nodes."""
+    spec = {0: {"payoff": 0, "after": []}}
+    previous = [0]
+    node_id = 1
+    for _ in range(layers):
+        current = []
+        for _ in range(width):
+            spec[node_id] = {"payoff": 1, "after": [{"node_id": p, "cost": 1} for p in previous]}
+            current.append(node_id)
+            node_id += 1
+        previous = current
+
+    return spec
+
+
+class TestTraversal(unittest.TestCase):
+    """node_list()/edge_list() visit each node once rather than enumerating every path."""
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def test_diamond_yields_each_node_and_edge_once(self):
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 10, "after": [{"node_id": 1, "cost": 1}]},
+                3: {"payoff": 20, "after": [{"node_id": 1, "cost": 2}]},
+                4: {"payoff": 30, "after": [{"node_id": 2, "cost": 3}, {"node_id": 3, "cost": 4}]},
+            }
+        )
+
+        self.assertEqual({n.node_id for n in g.node_list()}, {1, 2, 3, 4})
+        self.assertEqual(len(g.node_list()), 4)
+
+        edges = sorted((e.from_node.node_id, e.to_node.node_id, e.cost) for e in g.edge_list())
+        self.assertEqual(edges, [(1, 2, 1), (1, 3, 2), (2, 4, 3), (3, 4, 4)])
+
+    def test_deep_layered_graph_is_tractable(self):
+        g = Graph()
+        g.from_dict(_layered_spec(layers=15, width=3))
+
+        start = time.perf_counter()
+        nodes = g.node_list()
+        edges = g.edge_list()
+        elapsed = time.perf_counter() - start
+
+        self.assertEqual(len(nodes), 46)
+        self.assertEqual(len(edges), 129)
+
+        # visiting each node once takes well under a millisecond here; enumerating
+        # all 3 ** 15 paths takes seconds and grows 3x per added layer
+        self.assertLess(elapsed, 1.0)
+
+    def test_get_edges_accepts_explicit_visited_set(self):
+        g = Graph()
+        g.from_dict(_layered_spec(layers=2, width=2))
+
+        self.assertEqual(len(g.start_node.get_edges(set(), set())), 6)
 
 
 class TestToMermaid(unittest.TestCase):
