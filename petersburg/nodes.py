@@ -11,12 +11,17 @@
 import math
 import random
 from contextlib import contextmanager
+from numbers import Number
 
 import numpy as np
 
 from petersburg import Edge
 
 __author__ = "willmcginnis"
+
+
+def is_numeric_weight(weight):
+    return not hasattr(weight, "predict_proba") and isinstance(weight, Number)
 
 
 class Node:
@@ -83,7 +88,7 @@ class Node:
     def get_weights(self, feature_vector=None):
         w_out = []
         for edge, w in self.outcomes:
-            if isinstance(w, float) or isinstance(w, int):
+            if is_numeric_weight(w):
                 w_out.append((edge, w))
             else:
                 pr = w.predict_proba(feature_vector)[0][1]

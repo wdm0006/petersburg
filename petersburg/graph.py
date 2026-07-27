@@ -10,7 +10,14 @@
 
 import numpy as np
 
-from petersburg.nodes import GaussianNode, LogNormalNode, Node, PowerLawNode, UniformNode
+from petersburg.nodes import (
+    GaussianNode,
+    LogNormalNode,
+    Node,
+    PowerLawNode,
+    UniformNode,
+    is_numeric_weight,
+)
 
 __author__ = "willmcginnis"
 
@@ -358,7 +365,7 @@ class Graph:
             weight = None
             for outcome_edge, w in edge.from_node.outcomes:
                 if outcome_edge == edge:
-                    if isinstance(w, (int, float)):
+                    if is_numeric_weight(w):
                         weight = w
                     break
 
@@ -421,7 +428,7 @@ class Graph:
 
                 for idx, (outcome_edge, w) in enumerate(edge.from_node.outcomes):
                     if outcome_edge == edge:
-                        if isinstance(w, (int, float)):
+                        if is_numeric_weight(w):
                             original_weight = w
                             edge_index = idx
                             break
