@@ -170,6 +170,10 @@ print(f"Expected value: ${sum(outcomes)/len(outcomes):.2f}")
 ```python
 # Identify the most critical parameters
 g.print_sensitivity_report(num_simulations=1000, perturbation=0.1, top_n=5)
+
+# At most max_params parameters per type are analyzed (default 10). The report says
+# how many of the model's parameters were covered; pass max_params=None for all.
+g.print_sensitivity_report(num_simulations=1000, perturbation=0.1, top_n=5, max_params=None)
 ```
 
 ### Export to Mermaid Diagram

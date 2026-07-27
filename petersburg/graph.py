@@ -391,6 +391,27 @@ class Graph:
 
         return "\n".join(lines)
 
+    @staticmethod
+    def _edge_sort_key(edge):
+        return (str(edge.from_node.node_id), str(edge.to_node.node_id), str(edge.cost))
+
+    @staticmethod
+    def _node_sort_key(node):
+        return str(node.node_id)
+
+    @staticmethod
+    def _numeric_weight(edge):
+        """
+        Locate an edge's numeric weight in its source node's outcomes.
+
+        :param edge: The edge to look up
+        :return: (index, weight) tuple, or None if the edge has no numeric weight
+        """
+        for idx, (outcome_edge, weight) in enumerate(edge.from_node.outcomes):
+            if outcome_edge == edge and is_numeric_weight(weight):
+                return idx, weight
+        return None
+
     def analyze_sensitivity(
         self, parameter_type="edge_weights", num_simulations=1000, perturbation=0.1, max_params=10
     ):
@@ -400,10 +421,15 @@ class Graph:
         This method identifies which parameters (edge weights, costs, or payoffs) have
         the most impact on expected outcomes.
 
+        Candidate parameters are ordered deterministically (by node id, then edge cost)
+        before ``max_params`` is applied, so repeated runs on the same graph analyze the
+        same parameters. The return value reports both how many candidates were eligible
+        and how many were actually analyzed.
+
         :param parameter_type: Type of parameter to analyze ('edge_weights', 'costs', or 'payoffs')
         :param num_simulations: Number of Monte Carlo simulations per parameter value
         :param perturbation: How much to vary parameters (e.g., 0.1 = ±10%)
-        :param max_params: Maximum number of parameters to analyze
+        :param max_params: Maximum number of parameters to analyze, or None for no limit
         :return: Dictionary with sensitivity results sorted by impact
         """
         import numpy as np
@@ -415,27 +441,19 @@ class Graph:
         baseline_ev = np.mean(baseline_outcomes)
 
         sensitivity_results = []
+        candidate_count = 0
 
         if parameter_type == "edge_weights":
-            # Analyze each edge's weight sensitivity
-            edges = list(self.edge_list())
-            edges_to_test = edges[:max_params] if len(edges) > max_params else edges
+            # Analyze each edge's weight sensitivity; edges without a usable numeric
+            # weight are not candidates at all, so they never consume a max_params slot
+            candidates = []
+            for edge in sorted(self.edge_list(), key=self._edge_sort_key):
+                found = self._numeric_weight(edge)
+                if found is not None and found[1] != 0:
+                    candidates.append((edge, found[0], found[1]))
+            candidate_count = len(candidates)
 
-            for edge in edges_to_test:
-                # Find the weight for this edge in the from_node's outcomes
-                original_weight = None
-                edge_index = None
-
-                for idx, (outcome_edge, w) in enumerate(edge.from_node.outcomes):
-                    if outcome_edge == edge:
-                        if is_numeric_weight(w):
-                            original_weight = w
-                            edge_index = idx
-                            break
-
-                if original_weight is None or original_weight == 0:
-                    continue  # Skip edges without numeric weights
-
+            for edge, edge_index, original_weight in candidates[:max_params]:
                 # Test increased weight
                 edge.from_node.outcomes[edge_index] = (edge, original_weight * (1 + perturbation))
                 increased_outcomes = []
@@ -475,14 +493,12 @@ class Graph:
                 )
 
         elif parameter_type == "costs":
-            # Analyze edge cost sensitivity
-            edges = list(self.edge_list())
-            edges_to_test = edges[:max_params] if len(edges) > max_params else edges
+            # Analyze edge cost sensitivity; zero-cost edges are not candidates
+            edges = sorted(self.edge_list(), key=self._edge_sort_key)
+            candidates = [e for e in edges if e.cost != 0]
+            candidate_count = len(candidates)
 
-            for edge in edges_to_test:
-                if edge.cost == 0:
-                    continue  # Skip zero-cost edges
-
+            for edge in candidates[:max_params]:
                 original_cost = edge.cost
 
                 # Test increased cost
@@ -521,10 +537,11 @@ class Graph:
 
         elif parameter_type == "payoffs":
             # Analyze node payoff sensitivity
-            nodes = list(self.node_list())
-            nodes_to_test = [n for n in nodes if n.payoff != 0][:max_params]
+            nodes = sorted(self.node_list(), key=self._node_sort_key)
+            candidates = [n for n in nodes if n.payoff != 0]
+            candidate_count = len(candidates)
 
-            for node in nodes_to_test:
+            for node in candidates[:max_params]:
                 original_payoff = node.payoff
 
                 # Test increased payoff
@@ -565,10 +582,15 @@ class Graph:
             "baseline_ev": baseline_ev,
             "parameter_type": parameter_type,
             "perturbation": perturbation,
+            "max_params": max_params,
+            "candidate_parameters": candidate_count,
+            "parameters_analyzed": len(sensitivity_results),
             "results": sensitivity_results,
         }
 
-    def identify_critical_parameters(self, num_simulations=1000, perturbation=0.1, top_n=5):
+    def identify_critical_parameters(
+        self, num_simulations=1000, perturbation=0.1, top_n=5, max_params=10
+    ):
         """
         Identify the most critical parameters in the graph across all parameter types.
 
@@ -578,9 +600,12 @@ class Graph:
         :param num_simulations: Number of Monte Carlo simulations per parameter
         :param perturbation: How much to vary parameters (e.g., 0.1 = ±10%)
         :param top_n: Number of top parameters to return
+        :param max_params: Maximum number of parameters analyzed per parameter type,
+            or None for no limit
         :return: Dictionary with analysis summary and top parameters
         """
         all_results = []
+        total_candidates = 0
 
         # Analyze all parameter types
         for param_type in ["edge_weights", "costs", "payoffs"]:
@@ -588,8 +613,10 @@ class Graph:
                 parameter_type=param_type,
                 num_simulations=num_simulations,
                 perturbation=perturbation,
+                max_params=max_params,
             )
             all_results.extend(analysis["results"])
+            total_candidates += analysis["candidate_parameters"]
 
         # Sort all parameters by sensitivity
         all_results.sort(key=lambda x: x["sensitivity"], reverse=True)
@@ -599,17 +626,23 @@ class Graph:
 
         return {
             "baseline_ev": all_results[0]["baseline_ev"] if all_results else 0,
+            "max_params": max_params,
+            "total_candidate_parameters": total_candidates,
             "total_parameters_analyzed": len(all_results),
             "top_parameters": top_parameters,
         }
 
-    def print_sensitivity_report(self, num_simulations=1000, perturbation=0.1, top_n=5):
+    def print_sensitivity_report(
+        self, num_simulations=1000, perturbation=0.1, top_n=5, max_params=10
+    ):
         """
         Print a formatted sensitivity analysis report.
 
         :param num_simulations: Number of Monte Carlo simulations per parameter
         :param perturbation: How much to vary parameters (e.g., 0.1 = ±10%)
         :param top_n: Number of top parameters to display
+        :param max_params: Maximum number of parameters analyzed per parameter type,
+            or None for no limit
         """
         print("=" * 80)
         print("AUTOMATIC SENSITIVITY ANALYSIS")
@@ -617,11 +650,22 @@ class Graph:
         print()
 
         results = self.identify_critical_parameters(
-            num_simulations=num_simulations, perturbation=perturbation, top_n=top_n
+            num_simulations=num_simulations,
+            perturbation=perturbation,
+            top_n=top_n,
+            max_params=max_params,
         )
 
+        analyzed = results["total_parameters_analyzed"]
+        candidates = results["total_candidate_parameters"]
         print(f"Baseline Expected Value: ${results['baseline_ev']:.2f}")
-        print(f"Total Parameters Analyzed: {results['total_parameters_analyzed']}")
+        print(f"Parameters Analyzed: {analyzed} of {candidates}")
+        if analyzed < candidates:
+            print(
+                f"  NOTE: {candidates - analyzed} parameter(s) excluded by "
+                f"max_params={max_params} (per parameter type). "
+                f"Raise max_params to analyze them."
+            )
         print(f"Perturbation: ±{perturbation*100:.0f}%")
         print(f"Simulations per parameter: {num_simulations:,}")
         print()
