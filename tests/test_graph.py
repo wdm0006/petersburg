@@ -222,19 +222,54 @@ class TestFromAdjMatrix(unittest.TestCase):
         random.seed(42)
         np.random.seed(42)
 
-    def test_round_trip_includes_root_and_walks(self):
-        # A[r, c] != 0 creates edge r -> c, so this is the chain 0 -> 1.
-        A = np.array([[0.0, 1.0], [0.0, 0.0]])
+    def test_numeric_matrix_dtypes_build_and_walk(self):
+        for dtype in (np.int64, np.float32, np.float64):
+            with self.subTest(dtype=dtype):
+                # A[r, c] != 0 creates edge r -> c, with two terminal outcomes.
+                A = np.array([[0, 1, 1], [0, 0, 0], [0, 0, 0]], dtype=dtype)
+                g = Graph()
+                g.from_adj_matrix(A)
+
+                self.assertEqual(g.start_node.node_id, -1)
+                self.assertEqual({n.node_id for n in g.node_list()}, {-1, 0, 1, 2})
+                self.assertEqual(
+                    {(e.from_node.node_id, e.to_node.node_id) for e in g.edge_list()},
+                    {(-1, 0), (0, 1), (0, 2)},
+                )
+                self.assertEqual(g.get_outcome(), 0)
+                self.assertIn(g.get_outcome_node(), {1, 2})
+
+    def test_non_float64_weights_are_exported_and_analyzed(self):
+        for dtype in (np.int64, np.float32):
+            with self.subTest(dtype=dtype):
+                A = np.array([[0, 1, 1], [0, 0, 0], [0, 0, 0]], dtype=dtype)
+                g = Graph().from_adj_matrix(A)
+
+                self.assertEqual(g.to_mermaid().count("P: 0.50"), 2)
+                sensitivity = g.analyze_sensitivity(
+                    parameter_type="edge_weights", num_simulations=1
+                )
+                self.assertGreater(len(sensitivity["results"]), 0)
+
+    def test_classifier_weight_uses_predict_proba_and_skips_sensitivity(self):
+        class Classifier:
+            def __init__(self):
+                self.calls = 0
+
+            def predict_proba(self, feature_vector):
+                self.calls += 1
+                return np.array([[0.0, 1.0]])
+
+        classifier = Classifier()
         g = Graph()
-        g.from_adj_matrix(A)
+        start = Node(0)
+        start.add_outcome(Node(1), classifier=classifier)
+        g.start_node = start
 
-        # The synthetic root node (-1) becomes the start node.
-        self.assertEqual(g.start_node.node_id, -1)
-        node_ids = {n.node_id for n in g.node_list()}
-        self.assertEqual(node_ids, {-1, 0, 1})
-
-        # Deterministic chain -1 -> 0 -> 1 terminates at node 1.
-        self.assertEqual(g.get_outcome_node(), 1)
+        self.assertEqual(g.get_outcome_node(np.array([[1]])), 1)
+        self.assertEqual(classifier.calls, 1)
+        sensitivity = g.analyze_sensitivity(parameter_type="edge_weights", num_simulations=1)
+        self.assertEqual(sensitivity["results"], [])
 
     def test_nonzero_entry_points_row_to_col(self):
         # A[0, 1] = 1 is the only transition, so the graph is the chain -1 -> 0 -> 1.
