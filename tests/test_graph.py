@@ -3,7 +3,12 @@ Tests for the core Graph API: construction, simulation, options, and export.
 """
 
 import io
+import os
 import random
+import re
+import subprocess
+import sys
+import textwrap
 import time
 import unittest
 from contextlib import redirect_stdout
@@ -447,6 +452,113 @@ class TestToMermaid(unittest.TestCase):
         mermaid = g.to_mermaid()
 
         self.assertIn("    class 0 terminal", mermaid)
+
+
+def _wide_spec(start_id=100, children=80):
+    """A from_dict spec: one start node with `children` direct children, ids 0..children-1."""
+    spec = {start_id: {"payoff": 0, "after": []}}
+    for node_id in range(children):
+        spec[node_id] = {"payoff": node_id, "after": [{"node_id": start_id, "cost": node_id}]}
+    return spec
+
+
+_NODE_LINE = re.compile(r"^ {4}(\S+?)(?:\(\(|\[)")
+_EDGE_LINE = re.compile(r"^ {4}(\S+) -->(?:\|[^|]*\|)? (\S+)$")
+
+
+def _mermaid_node_ids(mermaid):
+    return [m.group(1) for m in (_NODE_LINE.match(line) for line in mermaid.splitlines()) if m]
+
+
+def _mermaid_edges(mermaid):
+    return [m.groups() for m in (_EDGE_LINE.match(line) for line in mermaid.splitlines()) if m]
+
+
+class TestMermaidDeterminism(unittest.TestCase):
+    """to_mermaid emits a stable, start-first node order and truncates intentionally."""
+
+    START_ID = 100
+    CHILDREN = 80
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _wide_graph(self):
+        return Graph().from_dict(_wide_spec(self.START_ID, self.CHILDREN))
+
+    def test_fresh_processes_produce_identical_output(self):
+        # node_list()/edge_list() are identity-hashed sets, so their iteration order
+        # varies with allocation addresses: only a fresh interpreter shows the drift.
+        script_source = f"""
+            from petersburg.graph import Graph
+
+            spec = {{{self.START_ID}: {{"payoff": 0, "after": []}}}}
+            for node_id in range({self.CHILDREN}):
+                spec[node_id] = {{
+                    "payoff": node_id,
+                    "after": [{{"node_id": {self.START_ID}, "cost": node_id}}],
+                }}
+
+            print(Graph().from_dict(spec).to_mermaid(max_nodes=10))
+            """
+        script = textwrap.dedent(script_source)
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        outputs = set()
+        for _ in range(3):
+            proc = subprocess.run(
+                [sys.executable, "-c", script], capture_output=True, text=True, cwd=repo_root
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            outputs.add(proc.stdout)
+
+        self.assertEqual(len(outputs), 1)
+        self.assertIn(f"{self.START_ID}((Start))", outputs.pop())
+
+    def test_export_ignores_traversal_iteration_order(self):
+        g = self._wide_graph()
+        baseline = g.to_mermaid(max_nodes=10)
+        nodes = list(g.node_list())
+        edges = list(g.edge_list())
+
+        for offset in (1, 7, len(nodes) - 1):
+            g.node_list = lambda nodes=nodes, offset=offset: nodes[offset:] + nodes[:offset]
+            g.edge_list = lambda edges=edges, offset=offset: edges[offset:] + edges[:offset]
+            self.assertEqual(g.to_mermaid(max_nodes=10), baseline)
+
+    def test_node_order_is_start_first_then_sorted_by_id(self):
+        ids = _mermaid_node_ids(self._wide_graph().to_mermaid(max_nodes=self.CHILDREN + 1))
+
+        self.assertEqual(ids[0], str(self.START_ID))
+        self.assertEqual(ids[1:], sorted(str(n) for n in range(self.CHILDREN)))
+
+    def test_truncation_keeps_start_node(self):
+        g = self._wide_graph()
+        total = self.CHILDREN + 1
+
+        for max_nodes in (1, 2, 5, 10, 40, total, total + 5):
+            with self.subTest(max_nodes=max_nodes):
+                ids = _mermaid_node_ids(g.to_mermaid(max_nodes=max_nodes))
+                self.assertEqual(ids[0], str(self.START_ID))
+                self.assertEqual(len(ids), min(max_nodes, total))
+
+    def test_truncated_edges_stay_within_the_selected_nodes(self):
+        mermaid = self._wide_graph().to_mermaid(max_nodes=10)
+        included = set(_mermaid_node_ids(mermaid))
+        emitted = _mermaid_edges(mermaid)
+
+        self.assertEqual(len(emitted), 9)
+        for from_id, to_id in emitted:
+            self.assertIn(from_id, included)
+            self.assertIn(to_id, included)
+
+    def test_edge_order_is_sorted_by_endpoints(self):
+        mermaid = self._wide_graph().to_mermaid(max_nodes=self.CHILDREN + 1)
+        emitted = _mermaid_edges(mermaid)
+
+        self.assertEqual(len(emitted), self.CHILDREN)
+        self.assertEqual(emitted, sorted(emitted, key=lambda e: (e[0], e[1])))
 
 
 class TestSensitivityParameterSelection(unittest.TestCase):

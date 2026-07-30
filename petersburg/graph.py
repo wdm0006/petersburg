@@ -314,20 +314,27 @@ class Graph:
         """
         Export the graph to Mermaid diagram syntax.
 
+        Nodes are emitted with the start node first, then in ascending node id order, so
+        repeated exports of the same graph produce byte-for-byte identical text and
+        `max_nodes` truncation always keeps the start node.
+
         :param orientation: Graph orientation ('LR' for left-right, 'TD' for top-down)
         :param max_nodes: Maximum number of nodes to include (for large graphs)
         :return: String containing Mermaid diagram syntax
         """
         lines = [f"graph {orientation}"]
 
-        # Get all nodes and edges
-        nodes = list(self.node_list())
-        edges = list(self.edge_list())
+        nodes = self._mermaid_node_order()
 
         # Limit nodes if graph is too large
         if len(nodes) > max_nodes:
             nodes = nodes[:max_nodes]
-            edges = [e for e in edges if e.from_node in nodes and e.to_node in nodes]
+
+        included = set(nodes)
+        edges = sorted(
+            (e for e in self.edge_list() if e.from_node in included and e.to_node in included),
+            key=self._mermaid_edge_sort_key,
+        )
 
         # Create node ID to display mapping
         node_to_id = {node: node.node_id for node in nodes}
@@ -402,6 +409,36 @@ class Graph:
     @staticmethod
     def _node_sort_key(node):
         return str(node.node_id)
+
+    def _mermaid_node_order(self):
+        """
+        Nodes in export order: the start node first, then the rest by ascending node id.
+
+        :return: List of nodes in a stable, process-independent order
+        """
+        rest = sorted(
+            (n for n in self.node_list() if n is not self.start_node), key=self._node_sort_key
+        )
+        return [self.start_node] + rest
+
+    @staticmethod
+    def _mermaid_edge_sort_key(edge):
+        """
+        Sort key for an edge, tie-broken by its position in its source node's outcomes so
+        that parallel edges sharing endpoints and cost still order deterministically.
+
+        :param edge: The edge to key
+        :return: Tuple usable as a total order over a graph's edges
+        """
+        position = next(
+            (
+                idx
+                for idx, (outcome_edge, _) in enumerate(edge.from_node.outcomes)
+                if outcome_edge is edge
+            ),
+            -1,
+        )
+        return Graph._edge_sort_key(edge) + (position,)
 
     @staticmethod
     def _numeric_weight(edge):
