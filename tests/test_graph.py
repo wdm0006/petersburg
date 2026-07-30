@@ -284,6 +284,19 @@ class TestFromAdjMatrix(unittest.TestCase):
         edges = {(e.from_node.node_id, e.to_node.node_id) for e in g.edge_list()}
         self.assertEqual(edges, {(-1, 0), (0, 1)})
 
+    def test_nan_is_ignored_when_normalizing_and_walking(self):
+        A = np.array([[0.0, 2.0, np.nan], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+        g = Graph().from_adj_matrix(A)
+
+        edge_weights = {
+            (edge.from_node.node_id, edge.to_node.node_id): weight
+            for node in g.node_list()
+            for edge, weight in node.outcomes
+        }
+        self.assertEqual(edge_weights[(0, 1)], 1.0)
+        self.assertTrue(np.isfinite(edge_weights[(0, 1)]))
+        self.assertEqual(g.get_outcome_node(), 1)
+
     def test_non_square_matrix_raises(self):
         g = Graph()
         with self.assertRaises(ValueError):

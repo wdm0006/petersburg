@@ -149,7 +149,7 @@ class Graph:
             after = []
             for r_idx in range(A.shape[0]):
                 if A[r_idx, c_idx] != 0.0 and not np.isnan(A[r_idx, c_idx]):
-                    row_sum = np.sum(A[r_idx, :])
+                    row_sum = np.nansum(A[r_idx, :])
                     if row_sum != 0.0:
                         weight = A[r_idx, c_idx] / row_sum
                     else:
