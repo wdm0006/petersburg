@@ -382,7 +382,11 @@ class Graph:
         lines.append("")
         lines.append("    classDef terminal fill:#e1f5e1")
         lines.append("    classDef payoff fill:#fff4e1")
-        lines.append("    class 0 terminal")
+
+        # Mark terminal nodes (those included in the export with no outgoing outcomes)
+        for node in nodes:
+            if len(node.outcomes) == 0:
+                lines.append(f"    class {node_to_id[node]} terminal")
 
         # Mark nodes with payoffs
         for node in nodes:
