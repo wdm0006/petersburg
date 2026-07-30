@@ -477,8 +477,7 @@ class TestMermaidDeterminism(unittest.TestCase):
     def test_fresh_processes_produce_identical_output(self):
         # node_list()/edge_list() are identity-hashed sets, so their iteration order
         # varies with allocation addresses: only a fresh interpreter shows the drift.
-        script = textwrap.dedent(
-            f"""
+        script_source = f"""
             from petersburg.graph import Graph
 
             spec = {{{self.START_ID}: {{"payoff": 0, "after": []}}}}
@@ -490,7 +489,7 @@ class TestMermaidDeterminism(unittest.TestCase):
 
             print(Graph().from_dict(spec).to_mermaid(max_nodes=10))
             """
-        )
+        script = textwrap.dedent(script_source)
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
         outputs = set()
