@@ -389,6 +389,52 @@ class TestToMermaid(unittest.TestCase):
         )
         self.assertTrue(g.to_mermaid(orientation="TD").startswith("graph TD"))
 
+    def test_mermaid_styles_terminal_node_with_nonzero_id(self):
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 50, "after": [{"node_id": 1, "cost": 10}]},
+            }
+        )
+        mermaid = g.to_mermaid()
+
+        self.assertIn("    class 2 terminal", mermaid)
+        # Node 0 does not exist here, so it must not be styled.
+        self.assertNotIn("class 0 terminal", mermaid)
+        # The start node still has outgoing outcomes.
+        self.assertNotIn("class 1 terminal", mermaid)
+
+    def test_mermaid_styles_every_terminal_node(self):
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 10, "after": [{"node_id": 1}]},
+                3: {"payoff": 20, "after": [{"node_id": 1}]},
+                4: {"payoff": 0, "after": [{"node_id": 1}]},
+                5: {"payoff": 30, "after": [{"node_id": 4}]},
+            }
+        )
+        mermaid = g.to_mermaid()
+
+        for terminal_id in (2, 3, 5):
+            self.assertIn(f"    class {terminal_id} terminal", mermaid)
+        for interior_id in (1, 4):
+            self.assertNotIn(f"class {interior_id} terminal", mermaid)
+
+    def test_mermaid_styles_node_zero_when_it_is_terminal(self):
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                0: {"payoff": 15, "after": [{"node_id": 1}]},
+            }
+        )
+        mermaid = g.to_mermaid()
+
+        self.assertIn("    class 0 terminal", mermaid)
+
 
 class TestSensitivityParameterSelection(unittest.TestCase):
     """max_params selection is deterministic and reported rather than silent."""
