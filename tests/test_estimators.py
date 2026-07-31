@@ -4,20 +4,26 @@ MixedModeEstimator. These exercise the real fit/partial_fit/predict paths (build
 and simulating an actual petersburg Graph) on small deterministic datasets.
 """
 
+import os
 import random
+import subprocess
+import sys
+import textwrap
 import unittest
+from unittest import mock
 
 import numpy as np
 
 from petersburg import FrequencyEstimator, MixedModeEstimator
+from petersburg import graph as pg
 
 __author__ = "willmcginnis"
 
 
-def _terminal_indices(categories):
-    """Indices into ``categories`` for the last-layer (terminal) nodes."""
+def _terminal_labels(categories):
+    """Fitted labels of the last-layer (terminal) categories."""
     last_layer = max(layer for layer, _ in categories)
-    return {idx for idx, (layer, _) in enumerate(categories) if layer == last_layer}
+    return {value for layer, value in categories if layer == last_layer}
 
 
 class TestFrequencyEstimatorFit(unittest.TestCase):
@@ -101,26 +107,49 @@ class TestFrequencyEstimatorPredict(unittest.TestCase):
         np.random.seed(42)
 
     def test_predict_single_terminal_is_deterministic(self):
-        # Every row transitions 0 -> 0, so the only reachable terminal is (1, 0).
+        # Every row transitions 0 -> 0, so the only reachable terminal is (1, 0) and
+        # predict must return that category's fitted label, not its index.
         y = np.array([[0, 0], [0, 0], [0, 0]])
         X = np.zeros((3, 2))
         est = FrequencyEstimator(num_simulations=5).fit(X, y)
 
         y_hat = est.predict(X)
-        terminal = est._categories.index((1, 0))
         self.assertEqual(y_hat.shape, (3, 1))
-        self.assertTrue((y_hat == terminal).all())
+        self.assertTrue((y_hat == 0).all())
 
     def test_predict_output_shape_and_valid_labels(self):
-        # A branching graph: predictions must be valid terminal category indices.
+        # A branching graph: predictions must be labels of terminal categories.
         y = np.array([[0, 0], [0, 0], [0, 1], [0, 1]])
         X = np.zeros((4, 2))
         est = FrequencyEstimator(num_simulations=25).fit(X, y)
 
         y_hat = est.predict(X)
         self.assertEqual(y_hat.shape, (4, 1))
-        valid = _terminal_indices(est._categories)
-        self.assertTrue(set(y_hat.ravel().astype(int)).issubset(valid))
+        self.assertTrue(set(y_hat.ravel()).issubset(_terminal_labels(est._categories)))
+
+    def test_predict_round_trips_string_labels(self):
+        # Non-numeric labels must survive predict; a float y_hat could not hold them.
+        y = np.array([["apply", "approved"]] * 3)
+        X = np.zeros((3, 2))
+        est = FrequencyEstimator(num_simulations=5).fit(X, y)
+
+        y_hat = est.predict(X)
+        self.assertEqual(y_hat.dtype, object)
+        self.assertEqual(y_hat.ravel().tolist(), ["approved", "approved", "approved"])
+
+    def test_predict_rejects_terminal_id_outside_the_category_range(self):
+        # The synthetic root -1 injected by from_adj_matrix is not a category index;
+        # indexing _categories with it would silently return the LAST category.
+        y = np.array([["apply", "approved"], ["apply", "rejected"]])
+        X = np.zeros((2, 2))
+        est = FrequencyEstimator(num_simulations=5).fit(X, y)
+
+        for node_id in (-1, len(est._categories)):
+            with self.subTest(node_id=node_id):
+                with mock.patch.object(pg.Graph, "get_outcome_node", return_value=node_id):
+                    with self.assertRaises(ValueError) as ctx:
+                        est.predict(X)
+                self.assertIn(str(node_id), str(ctx.exception))
 
 
 class TestMixedModeEstimatorFrequencyFallback(unittest.TestCase):
@@ -145,9 +174,8 @@ class TestMixedModeEstimatorFrequencyFallback(unittest.TestCase):
         est = MixedModeEstimator(num_simulations=5).fit(X, y)
 
         y_hat = est.predict(X)
-        terminal = est._categories.index((1, 0))
         self.assertEqual(y_hat.shape, (3, 1))
-        self.assertTrue((y_hat == terminal).all())
+        self.assertTrue((y_hat == 0).all())
 
 
 class TestMixedModeEstimatorClassifierBacked(unittest.TestCase):
@@ -187,14 +215,66 @@ class TestMixedModeEstimatorClassifierBacked(unittest.TestCase):
         X, y = self._training_data()
         est = MixedModeEstimator(num_simulations=25).fit(X, y)
 
-        i10 = est._categories.index((1, 0))
-        i11 = est._categories.index((1, 1))
-
-        # A low-feature row routes to the low-feature terminal; a high one to the other.
+        # A low-feature row routes to the low-feature terminal; a high one to the other,
+        # and each prediction is that terminal's fitted label.
         random.seed(1)
         np.random.seed(1)
-        self.assertEqual(int(est.predict(np.array([[0.0]]))[0, 0]), i10)
-        self.assertEqual(int(est.predict(np.array([[10.0]]))[0, 0]), i11)
+        self.assertEqual(est.predict(np.array([[0.0]]))[0, 0], 0)
+        self.assertEqual(est.predict(np.array([[10.0]]))[0, 0], 1)
+
+    def test_predict_returns_string_label_and_rejects_the_synthetic_root(self):
+        y = np.array([["apply", "approved"]] * 3)
+        X = np.zeros((3, 1))
+        est = MixedModeEstimator(num_simulations=5).fit(X, y)
+
+        self.assertEqual(est.predict(X).ravel().tolist(), ["approved"] * 3)
+
+        with mock.patch.object(pg.Graph, "get_outcome_node", return_value=-1):
+            with self.assertRaises(ValueError):
+                est.predict(X)
+
+
+class TestCategoryOrderDeterminism(unittest.TestCase):
+    """Category indices must depend on the data alone, never on set iteration order."""
+
+    LABELS = ["approved", "rejected", "delayed", "appealed", "withdrawn"]
+
+    def _string_labelled_y(self):
+        return np.array([["apply", self.LABELS[idx % len(self.LABELS)]] for idx in range(20)])
+
+    def test_categories_follow_first_appearance_order(self):
+        y = self._string_labelled_y()
+        expected = [(0, "apply")] + [(1, label) for label in self.LABELS]
+
+        self.assertEqual(FrequencyEstimator().fit(np.zeros((20, 2)), y)._categories, expected)
+        self.assertEqual(MixedModeEstimator().fit(np.zeros((20, 1)), y)._categories, expected)
+
+    def test_fresh_processes_agree_on_category_order(self):
+        # str hashing is randomized per process, so iterating a set of string labels gives
+        # each label a different index in each interpreter run. Only a fresh process shows it.
+        script_source = f"""
+            import numpy as np
+            from petersburg.estimators import FrequencyEstimator
+
+            labels = {self.LABELS!r}
+            y = np.array([["apply", labels[idx % len(labels)]] for idx in range(20)])
+            est = FrequencyEstimator().fit(np.zeros((20, 2)), y)
+            print(est._categories)
+            """
+        script = textwrap.dedent(script_source)
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        outputs = set()
+        for _ in range(3):
+            proc = subprocess.run(
+                [sys.executable, "-c", script], capture_output=True, text=True, cwd=repo_root
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            outputs.add(proc.stdout)
+
+        self.assertEqual(len(outputs), 1)
+        expected = [(0, "apply")] + [(1, label) for label in self.LABELS]
+        self.assertEqual(outputs.pop().strip(), str(expected))
 
 
 if __name__ == "__main__":

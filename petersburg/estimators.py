@@ -9,6 +9,43 @@ from petersburg import graph as pg
 __author__ = "willmcginnis"
 
 
+def _build_categories(y):
+    """
+    Builds the ordered ``(layer, value)`` category list for a multi-column y.
+
+    Values are kept in first-appearance order within each column, so a category's index is a
+    function of the data alone. Iterating a ``set`` here would make the indices depend on
+    ``PYTHONHASHSEED`` for string labels, and first appearance (unlike sorting) does not require
+    the labels to be mutually comparable.
+
+    :param y: multi-column outcome array, one column per layer
+    :return: list of ``(layer_index, value)`` tuples
+    """
+
+    return [
+        (col, value) for col in range(y.shape[1]) for value in dict.fromkeys(y[:, col].tolist())
+    ]
+
+
+def _terminal_label(categories, node_id):
+    """
+    Maps a simulated terminal node id back to the label it was fitted from.
+
+    :param categories: the fitted ``(layer, value)`` category list
+    :param node_id: node id returned by ``Graph.get_outcome_node``
+    :return: the fitted label for that category
+    """
+
+    if not 0 <= node_id < len(categories):
+        raise ValueError(
+            f"Simulation ended on node id {node_id}, which is not a fitted category index "
+            f"(expected 0 to {len(categories) - 1}). Node id -1 is the synthetic root injected "
+            f"by Graph.from_adj_matrix, and means the walk reached no fitted category."
+        )
+
+    return categories[node_id][1]
+
+
 class FrequencyEstimator(BaseEstimator, ClassifierMixin):
 
     def __init__(self, verbose=False, num_simulations=10):
@@ -36,16 +73,12 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
         :return:
         """
 
-        # set up the frequency matrix based on unique columns present
-        dims = sum([len(set(y[:, col].tolist())) for col in range(y.shape[1])])
-        self._frequency_matrix = np.zeros((dims, dims))
-
         # set up the categories corresponding to each index
-        self._categories = [
-            (idx, a)
-            for idx, b in enumerate([set(y[:, col].tolist()) for col in range(y.shape[1])])
-            for a in b
-        ]
+        self._categories = _build_categories(y)
+
+        # set up the frequency matrix based on unique columns present
+        dims = len(self._categories)
+        self._frequency_matrix = np.zeros((dims, dims))
 
         for ridx in range(y.shape[0]):
             for fcidx, tcidx in zip(range(0, y.shape[1] - 1), range(1, y.shape[1])):
@@ -90,6 +123,9 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
         """
         Uses the observed adjacency matrix to create a petersburg graph and simulate the outcome for each entry
 
+        Returns the fitted label of the most frequently simulated terminal category, as an
+        object-dtype (n, 1) array so non-numeric labels survive.
+
         :param X:
         :param y:
         :return:
@@ -99,7 +135,7 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
 
         g.from_adj_matrix(self._frequency_matrix, self._categories)
 
-        y_hat = np.zeros((X.shape[0], 1))
+        y_hat = np.empty((X.shape[0], 1), dtype=object)
         for r_idx in range(y_hat.shape[0]):
             sims = Counter(
                 [
@@ -107,7 +143,7 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
                     for _ in range(self.num_simulations)
                 ]
             )
-            y_hat[r_idx, 0] = sims.most_common(1)[0][0]
+            y_hat[r_idx, 0] = _terminal_label(self._categories, sims.most_common(1)[0][0])
 
         return y_hat
 
@@ -153,16 +189,12 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
         return normed_matrix
 
     def _update_frequencies(self, y):
-        # set up the frequency matrix based on unique columns present
-        dims = sum([len(set(y[:, col].tolist())) for col in range(y.shape[1])])
-        self._frequency_matrix = np.zeros((dims, dims))
-
         # set up the categories corresponding to each index
-        self._categories = [
-            (idx, a)
-            for idx, b in enumerate([set(y[:, col].tolist()) for col in range(y.shape[1])])
-            for a in b
-        ]
+        self._categories = _build_categories(y)
+
+        # set up the frequency matrix based on unique columns present
+        dims = len(self._categories)
+        self._frequency_matrix = np.zeros((dims, dims))
 
         for ridx in range(y.shape[0]):
             for fcidx, tcidx in zip(range(0, y.shape[1] - 1), range(1, y.shape[1])):
@@ -230,6 +262,9 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
         """
         Uses the observed adjacency matrix to create a petersburg graph and simulate the outcome for each entry
 
+        Returns the fitted label of the most frequently simulated terminal category, as an
+        object-dtype (n, 1) array so non-numeric labels survive.
+
         :param X:
         :param y:
         :return:
@@ -239,7 +274,7 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
 
         g.from_adj_matrix(self._frequency_matrix, self._categories, clf_matrix=self._clf_matrix)
 
-        y_hat = np.zeros((X.shape[0], 1))
+        y_hat = np.empty((X.shape[0], 1), dtype=object)
         for r_idx in range(y_hat.shape[0]):
             sims = Counter(
                 [
@@ -247,6 +282,6 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
                     for _ in range(self.num_simulations)
                 ]
             )
-            y_hat[r_idx, 0] = sims.most_common(1)[0][0]
+            y_hat[r_idx, 0] = _terminal_label(self._categories, sims.most_common(1)[0][0])
 
         return y_hat

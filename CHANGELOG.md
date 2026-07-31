@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING**: `FrequencyEstimator.predict()` and `MixedModeEstimator.predict()` now return the
+  fitted label of the simulated terminal category rather than that category's internal index into
+  `_categories`. The returned array is object-dtype, so non-numeric (e.g. string) labels round-trip
+  instead of being coerced into a float array. Callers that consumed the index must now consume the
+  label; this matches the scikit-learn estimator contract that `predict` returns fitted labels, and
+  makes the inherited `score()` comparison against `y` meaningful.
+
+### Fixed
+
+- Estimator categories are now built in first-appearance order (`dict.fromkeys`) rather than by
+  iterating a `set`. Previously, string labels were assigned a different index in every interpreter
+  run because `str` hashing is randomized per process, so the same fitted model returned a different
+  prediction — pointing at a different label — in each run.
+- A simulated terminal node id outside the fitted category range (notably the synthetic root `-1`
+  injected by `Graph.from_adj_matrix`) now raises a descriptive `ValueError` instead of silently
+  indexing the last category.
+
 ## [0.1.0] - 2025-10-11
 
 ### Added

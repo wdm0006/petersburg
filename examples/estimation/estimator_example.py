@@ -1,5 +1,6 @@
 import json
 import random
+from collections import Counter
 
 import numpy as np
 
@@ -51,18 +52,14 @@ def make_data(n_samples=10000):
     return np.array(X), np.array(y)
 
 
-def validate(y, categories, truth):
+def validate(y, truth):
     t = 0
     f = 0
     y = y.reshape(
         -1,
     ).tolist()
-    final_idx = len(truth[0]) - 1
     for idx in range(len(truth)):
-        truth_tuple = (final_idx, truth[idx][-1])
-        truth_idx = [k for k in categories.keys() if categories[k] == truth_tuple][0]
-
-        if y[idx] == truth_idx:
+        if y[idx] == truth[idx][-1]:
             t += 1
         else:
             f += 1
@@ -84,25 +81,20 @@ if __name__ == "__main__":
     labels = clf._cateogry_labels
     print(labels)
 
-    print("\nUnique Predicted Outcomes")
-    outcomes = sorted(
-        [
-            str(labels[int(x)])
-            for x in set(
-                y_hat.reshape(
-                    -1,
-                ).tolist()
-            )
-        ]
+    # predict() returns the fitted terminal label for each row, not an internal index.
+    counts = Counter(
+        y_hat.reshape(
+            -1,
+        ).tolist()
     )
-    print(outcomes)
+
+    print("\nUnique Predicted Outcomes")
+    print(sorted(str(label) for label in counts))
 
     print("\nHistogram")
-    histogram = dict(
-        zip(outcomes, [float(x) for x in np.histogram(y_hat, bins=[2.5, 3.5, 4.5, 5.5])[0]])
-    )
+    histogram = {str(label): float(count) for label, count in counts.items()}
     print(json.dumps(histogram, sort_keys=True, indent=4))
 
-    accuracy = validate(y_hat, labels, y_test)
+    accuracy = validate(y_hat, y_test)
     print("\nOverall Accuracy")
     print(f"{accuracy * 100.0:9.5f}%")
