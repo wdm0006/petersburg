@@ -469,11 +469,15 @@ class Graph:
 
         :param parameter_type: Type of parameter to analyze ('edge_weights', 'costs', or 'payoffs')
         :param num_simulations: Number of Monte Carlo simulations per parameter value
-        :param perturbation: How much to vary parameters (e.g., 0.1 = ±10%)
+        :param perturbation: How much to vary parameters, strictly between 0 and 1 (e.g., 0.1 = ±10%)
         :param max_params: Maximum number of parameters to analyze, or None for no limit
         :return: Dictionary with sensitivity results sorted by impact
+        :raises ValueError: If perturbation is not strictly between 0 and 1
         """
         import numpy as np
+
+        if not 0 < perturbation < 1:
+            raise ValueError(f"perturbation must be strictly between 0 and 1, got {perturbation}")
 
         # Get baseline expected value
         baseline_outcomes = []
@@ -505,7 +509,7 @@ class Graph:
                 # Test decreased weight
                 edge.from_node.outcomes[edge_index] = (
                     edge,
-                    max(0.01, original_weight * (1 - perturbation)),
+                    original_weight * (1 - perturbation),
                 )
                 decreased_outcomes = []
                 for _ in range(num_simulations):
