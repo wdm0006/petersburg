@@ -678,5 +678,87 @@ class TestSensitivityParameterSelection(unittest.TestCase):
         self.assertNotIn("excluded by max_params", full)
 
 
+class TestEdgeWeightPerturbation(unittest.TestCase):
+    """The decrease arm lowers the weight, including for weights below 0.01."""
+
+    SMALL_WEIGHT = 0.005
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _rare_event_graph(self):
+        """Start node 1 with a rare high-payoff branch and a common worthless one."""
+        return Graph().from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {
+                    "payoff": 1000,
+                    "after": [{"node_id": 1, "cost": 0, "weight": self.SMALL_WEIGHT}],
+                },
+                3: {"payoff": 0, "after": [{"node_id": 1, "cost": 0, "weight": 0.995}]},
+            }
+        )
+
+    def _record_rare_edge_weight(self, graph):
+        """Shadow get_outcome to capture the weight installed on edge 1→2 per walk."""
+        observed = []
+        real_get_outcome = graph.get_outcome
+
+        def recording_get_outcome(*args, **kwargs):
+            for edge, weight in graph.start_node.outcomes:
+                if edge.to_node.node_id == 2:
+                    observed.append(weight)
+            return real_get_outcome(*args, **kwargs)
+
+        graph.get_outcome = recording_get_outcome
+        return observed
+
+    def test_decrease_arm_applies_the_exact_perturbed_weight(self):
+        # Asserting on the weight actually installed, not on a Monte Carlo mean, so the
+        # assertion is free of simulation noise. Candidates sort edge 1→2 first, and
+        # num_simulations=1 gives one walk per arm.
+        graph = self._rare_event_graph()
+        observed = self._record_rare_edge_weight(graph)
+
+        graph.analyze_sensitivity(
+            parameter_type="edge_weights", num_simulations=1, perturbation=0.1
+        )
+
+        self.assertEqual(len(observed), 5)
+        self.assertAlmostEqual(observed[0], 0.005)
+        self.assertAlmostEqual(observed[1], 0.0055)
+        self.assertAlmostEqual(observed[2], 0.0045)
+
+    def test_original_weight_is_restored_after_analysis(self):
+        graph = self._rare_event_graph()
+        before = [(edge.to_node.node_id, weight) for edge, weight in graph.start_node.outcomes]
+
+        graph.analyze_sensitivity(
+            parameter_type="edge_weights", num_simulations=1, perturbation=0.1
+        )
+
+        after = [(edge.to_node.node_id, weight) for edge, weight in graph.start_node.outcomes]
+        self.assertEqual(before, after)
+
+    def test_out_of_range_perturbation_is_rejected(self):
+        graph = self._rare_event_graph()
+        for perturbation in (-0.5, 0, 1, 1.5):
+            for parameter_type in ("edge_weights", "costs", "payoffs"):
+                with self.assertRaises(ValueError):
+                    graph.analyze_sensitivity(
+                        parameter_type=parameter_type,
+                        num_simulations=1,
+                        perturbation=perturbation,
+                    )
+
+    def test_default_perturbation_still_runs(self):
+        result = self._rare_event_graph().analyze_sensitivity(
+            parameter_type="edge_weights", num_simulations=1
+        )
+        self.assertEqual(result["perturbation"], 0.1)
+        self.assertEqual(result["parameters_analyzed"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
