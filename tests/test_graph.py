@@ -760,5 +760,73 @@ class TestEdgeWeightPerturbation(unittest.TestCase):
         self.assertEqual(result["parameters_analyzed"], 2)
 
 
+class TestElasticitySign(unittest.TestCase):
+    """Elasticity is a magnitude for every parameter type, including negative baselines."""
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _chain_graph(self, first_cost, second_cost, payoff):
+        """Deterministic three-node chain 1 -> 2 -> 3 with a single terminal payoff."""
+        return Graph().from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 0, "after": [{"node_id": 1, "cost": first_cost}]},
+                3: {"payoff": payoff, "after": [{"node_id": 2, "cost": second_cost}]},
+            }
+        )
+
+    def _analyze_all(self, graph):
+        # One path and fixed payoffs, so a single simulation per arm is exact.
+        return graph.identify_critical_parameters(
+            num_simulations=1, perturbation=0.1, top_n=100, max_params=None
+        )
+
+    def test_negative_baseline_elasticities_are_non_negative(self):
+        result = self._analyze_all(self._chain_graph(100, 5, 10))
+
+        self.assertAlmostEqual(result["baseline_ev"], -95.0)
+        self.assertEqual(result["total_parameters_analyzed"], 5)
+        self.assertEqual(len(result["top_parameters"]), 5)
+        for param in result["top_parameters"]:
+            self.assertGreaterEqual(param["elasticity"], 0, param["parameter"])
+
+    def test_elasticity_is_sensitivity_over_absolute_baseline(self):
+        result = self._analyze_all(self._chain_graph(100, 5, 10))
+        baseline_ev = result["baseline_ev"]
+        by_name = {param["parameter"]: param for param in result["top_parameters"]}
+
+        cost = by_name["Edge 1→2 cost"]
+        payoff = by_name["Node 3 payoff"]
+
+        # Magnitudes first, so the shared formula cannot be satisfied by two zeros.
+        self.assertAlmostEqual(cost["sensitivity"], 10.0)
+        self.assertAlmostEqual(payoff["sensitivity"], 1.0)
+        for param in (cost, payoff):
+            self.assertAlmostEqual(param["elasticity"], param["sensitivity"] / abs(baseline_ev))
+
+    def test_zero_baseline_yields_zero_elasticity_for_every_type(self):
+        graph = self._chain_graph(10, 0, 10)
+
+        for parameter_type in ("edge_weights", "costs", "payoffs"):
+            analysis = graph.analyze_sensitivity(
+                parameter_type=parameter_type, num_simulations=1, perturbation=0.1
+            )
+            self.assertEqual(analysis["baseline_ev"], 0)
+            self.assertGreaterEqual(analysis["parameters_analyzed"], 1)
+            for param in analysis["results"]:
+                self.assertEqual(param["elasticity"], 0, param["parameter"])
+
+    def test_positive_baseline_elasticity_is_unchanged(self):
+        result = self._analyze_all(self._chain_graph(5, 0, 100))
+        baseline_ev = result["baseline_ev"]
+
+        self.assertAlmostEqual(baseline_ev, 95.0)
+        for param in result["top_parameters"]:
+            # abs() is a no-op above zero, so these are the pre-fix values.
+            self.assertAlmostEqual(param["elasticity"], param["sensitivity"] / baseline_ev)
+
+
 if __name__ == "__main__":
     unittest.main()

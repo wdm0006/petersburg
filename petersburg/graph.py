@@ -453,6 +453,20 @@ class Graph:
                 return idx, weight
         return None
 
+    @staticmethod
+    def _elasticity(sensitivity, baseline_ev):
+        """
+        Express a sensitivity as a fraction of the baseline expected value.
+
+        ``sensitivity`` is a mean of absolute deviations, so elasticity is a magnitude:
+        the baseline's absolute value is used and a negative baseline does not flip the sign.
+
+        :param sensitivity: Mean absolute change in expected value
+        :param baseline_ev: Unperturbed expected value
+        :return: sensitivity / abs(baseline_ev), or 0 when the baseline is zero
+        """
+        return (sensitivity / abs(baseline_ev)) if baseline_ev != 0 else 0
+
     def analyze_sensitivity(
         self, parameter_type="edge_weights", num_simulations=1000, perturbation=0.1, max_params=10
     ):
@@ -533,7 +547,7 @@ class Graph:
                         "increased_ev": increased_ev,
                         "decreased_ev": decreased_ev,
                         "sensitivity": sensitivity,
-                        "elasticity": (sensitivity / baseline_ev) if baseline_ev != 0 else 0,
+                        "elasticity": self._elasticity(sensitivity, baseline_ev),
                     }
                 )
 
@@ -576,7 +590,7 @@ class Graph:
                         "increased_ev": increased_ev,
                         "decreased_ev": decreased_ev,
                         "sensitivity": sensitivity,
-                        "elasticity": (sensitivity / baseline_ev) if baseline_ev != 0 else 0,
+                        "elasticity": self._elasticity(sensitivity, baseline_ev),
                     }
                 )
 
@@ -616,7 +630,7 @@ class Graph:
                         "increased_ev": increased_ev,
                         "decreased_ev": decreased_ev,
                         "sensitivity": sensitivity,
-                        "elasticity": (sensitivity / abs(baseline_ev)) if baseline_ev != 0 else 0,
+                        "elasticity": self._elasticity(sensitivity, baseline_ev),
                     }
                 )
 
