@@ -279,8 +279,21 @@ class Graph:
 
     def to_networkx(self):
         """
+        Export the graph to a networkx DiGraph.
 
-        :return:
+        Nodes are added with the start node first, then in ascending node id order, and
+        edges in ``_stable_edge_sort_key`` order, so a DiGraph's insertion order is
+        identical for the same graph across processes.
+
+        Each node carries its ``payoff``. Each edge carries its ``cost``, its transition
+        ``probability`` (``None`` for a classifier-weighted edge), and ``weight``, which
+        remains the cost so existing callers passing ``weight=`` to networkx path
+        algorithms are unaffected.
+
+        A DiGraph holds one edge per node pair, so parallel edges sharing endpoints
+        collapse into the last one in sort order.
+
+        :return: networkx DiGraph of node ids
         """
         try:
             import networkx as nx
@@ -289,18 +302,18 @@ class Graph:
 
         g = nx.DiGraph()
 
-        # first make a node id: obj mapping and add nodes to the graph
-        node_to_node_id = {node: node.node_id for node in self.node_list()}
-        nodes = list(node_to_node_id.values())
-        g.add_nodes_from(nodes)
+        for node in self._stable_node_order():
+            g.add_node(node.node_id, payoff=node.payoff)
 
-        # now iterate through and add in our edges using that mapping
-        edges = list(self.edge_list())
-        for edge in edges:
-            from_node_id = node_to_node_id.get(edge.from_node)
-            to_node_id = node_to_node_id.get(edge.to_node)
-            cost = edge.cost
-            g.add_edge(from_node_id, to_node_id, weight=cost)
+        for edge in sorted(self.edge_list(), key=self._stable_edge_sort_key):
+            found = self._numeric_weight(edge)
+            g.add_edge(
+                edge.from_node.node_id,
+                edge.to_node.node_id,
+                weight=edge.cost,
+                cost=edge.cost,
+                probability=None if found is None else found[1],
+            )
 
         return g
 
@@ -324,7 +337,7 @@ class Graph:
         """
         lines = [f"graph {orientation}"]
 
-        nodes = self._mermaid_node_order()
+        nodes = self._stable_node_order()
 
         # Limit nodes if graph is too large
         if len(nodes) > max_nodes:
@@ -333,7 +346,7 @@ class Graph:
         included = set(nodes)
         edges = sorted(
             (e for e in self.edge_list() if e.from_node in included and e.to_node in included),
-            key=self._mermaid_edge_sort_key,
+            key=self._stable_edge_sort_key,
         )
 
         # Create node ID to display mapping
@@ -410,7 +423,7 @@ class Graph:
     def _node_sort_key(node):
         return str(node.node_id)
 
-    def _mermaid_node_order(self):
+    def _stable_node_order(self):
         """
         Nodes in export order: the start node first, then the rest by ascending node id.
 
@@ -422,7 +435,7 @@ class Graph:
         return [self.start_node] + rest
 
     @staticmethod
-    def _mermaid_edge_sort_key(edge):
+    def _stable_edge_sort_key(edge):
         """
         Sort key for an edge, tie-broken by its position in its source node's outcomes so
         that parallel edges sharing endpoints and cost still order deterministically.

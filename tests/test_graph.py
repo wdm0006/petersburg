@@ -2,6 +2,7 @@
 Tests for the core Graph API: construction, simulation, options, and export.
 """
 
+import importlib.util
 import io
 import os
 import random
@@ -559,6 +560,145 @@ class TestMermaidDeterminism(unittest.TestCase):
 
         self.assertEqual(len(emitted), self.CHILDREN)
         self.assertEqual(emitted, sorted(emitted, key=lambda e: (e[0], e[1])))
+
+
+_HAS_NETWORKX = importlib.util.find_spec("networkx") is not None
+
+
+def _attribute_spec():
+    """Start node 1 branching to node 2 (payoff 50, cost 10, p 0.25) and node 3 (p 0.75)."""
+    return {
+        1: {"payoff": 0, "after": []},
+        2: {"payoff": 50, "after": [{"node_id": 1, "cost": 10, "weight": 0.25}]},
+        3: {"payoff": 20, "after": [{"node_id": 1, "cost": 4, "weight": 0.75}]},
+    }
+
+
+@unittest.skipUnless(_HAS_NETWORKX, "networkx is not installed")
+class TestToNetworkx(unittest.TestCase):
+    """to_networkx exports a stable order and carries payoffs, costs, and probabilities."""
+
+    START_ID = 100
+    CHILDREN = 25
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _wide_graph(self):
+        return Graph().from_dict(_wide_spec(self.START_ID, self.CHILDREN))
+
+    def test_fresh_processes_produce_identical_order(self):
+        # node_list()/edge_list() are identity-hashed sets, so their iteration order
+        # varies with allocation addresses: only a fresh interpreter shows the drift.
+        script_source = f"""
+            from petersburg.graph import Graph
+
+            spec = {{{self.START_ID}: {{"payoff": 0, "after": []}}}}
+            for node_id in range({self.CHILDREN}):
+                spec[node_id] = {{
+                    "payoff": node_id,
+                    "after": [{{"node_id": {self.START_ID}, "cost": node_id}}],
+                }}
+
+            g = Graph().from_dict(spec).to_networkx()
+            print(list(g.nodes()))
+            print(list(g.edges()))
+            """
+        script = textwrap.dedent(script_source)
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+        outputs = set()
+        for _ in range(3):
+            proc = subprocess.run(
+                [sys.executable, "-c", script], capture_output=True, text=True, cwd=repo_root
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            outputs.add(proc.stdout)
+
+        self.assertEqual(len(outputs), 1)
+        self.assertTrue(outputs.pop().startswith(f"[{self.START_ID}, 0, 1,"))
+
+    def test_export_ignores_traversal_iteration_order(self):
+        g = self._wide_graph()
+        baseline = g.to_networkx()
+        nodes = list(g.node_list())
+        edges = list(g.edge_list())
+
+        for offset in (1, 7, len(nodes) - 1):
+            g.node_list = lambda nodes=nodes, offset=offset: nodes[offset:] + nodes[:offset]
+            g.edge_list = lambda edges=edges, offset=offset: edges[offset:] + edges[:offset]
+            rotated = g.to_networkx()
+
+            self.assertEqual(list(rotated.nodes()), list(baseline.nodes()))
+            self.assertEqual(list(rotated.edges()), list(baseline.edges()))
+
+    def test_node_order_is_start_first_then_sorted_by_id(self):
+        ids = list(self._wide_graph().to_networkx().nodes())
+
+        self.assertEqual(ids[0], self.START_ID)
+        self.assertEqual(ids[1:], sorted(range(self.CHILDREN), key=str))
+
+    def test_node_payoffs_are_exported(self):
+        g = Graph().from_dict(_attribute_spec()).to_networkx()
+
+        self.assertEqual(g.nodes[1]["payoff"], 0)
+        self.assertEqual(g.nodes[2]["payoff"], 50)
+        self.assertEqual(g.nodes[3]["payoff"], 20)
+
+    def test_edges_carry_cost_and_probability(self):
+        g = Graph().from_dict(_attribute_spec()).to_networkx()
+
+        self.assertEqual(g.edges[1, 2]["cost"], 10)
+        self.assertEqual(g.edges[1, 2]["probability"], 0.25)
+        self.assertEqual(g.edges[1, 3]["cost"], 4)
+        self.assertEqual(g.edges[1, 3]["probability"], 0.75)
+
+    def test_weight_still_holds_the_cost(self):
+        graph = Graph().from_dict(_attribute_spec())
+        g = graph.to_networkx()
+
+        self.assertEqual(g.edges[1, 2]["weight"], 10)
+        self.assertEqual(g.edges[1, 3]["weight"], 4)
+        for edge in graph.edge_list():
+            exported = g.edges[edge.from_node.node_id, edge.to_node.node_id]
+            self.assertEqual(exported["weight"], edge.cost)
+
+    def test_classifier_weighted_edge_has_no_probability(self):
+        class Classifier:
+            def predict_proba(self, feature_vector):
+                return np.array([[0.0, 1.0]])
+
+        graph = Graph()
+        start = Node(0)
+        start.add_outcome(Node(1), cost=7, classifier=Classifier())
+        graph.start_node = start
+
+        g = graph.to_networkx()
+
+        self.assertEqual(g.edges[0, 1]["cost"], 7)
+        self.assertIsNone(g.edges[0, 1]["probability"])
+
+    def test_parallel_edges_collapse_deterministically(self):
+        # A DiGraph holds one edge per pair, so the last edge in sort order wins; the
+        # point of the assertion is that which one wins no longer depends on set order.
+        spec = {
+            1: {"payoff": 0, "after": []},
+            2: {
+                "payoff": 50,
+                "after": [{"node_id": 1, "cost": 5}, {"node_id": 1, "cost": 7}],
+            },
+        }
+        graph = Graph().from_dict(spec)
+        edges = list(graph.edge_list())
+        g = graph.to_networkx()
+
+        self.assertEqual(len(edges), 2)
+        self.assertEqual(len(g.edges()), 1)
+        self.assertEqual(g.edges[1, 2]["cost"], 7)
+
+        graph.edge_list = lambda edges=edges: list(reversed(edges))
+        self.assertEqual(graph.to_networkx().edges[1, 2]["cost"], 7)
 
 
 class TestSensitivityParameterSelection(unittest.TestCase):

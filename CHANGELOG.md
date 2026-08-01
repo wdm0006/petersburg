@@ -15,8 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of being coerced into a float array. Callers that consumed the index must now consume the
   label; this matches the scikit-learn estimator contract that `predict` returns fitted labels, and
   makes the inherited `score()` comparison against `y` meaningful.
+- `Graph.to_networkx()` now attaches each node's `payoff`, and each edge's `cost` and transition
+  `probability` (`None` for a classifier-weighted edge), alongside the pre-existing `weight`, which
+  still holds the edge cost so existing callers are unaffected.
 
 ### Fixed
+
+- `Graph.to_networkx()` now adds nodes and edges in a stable order (start node first, then ascending
+  node id; edges sorted by endpoints, cost, and outcome position) instead of iterating identity-hashed
+  sets, so a returned `DiGraph` iterates identically across processes for the same graph. A `DiGraph`
+  still holds one edge per node pair, so parallel edges collapse — but which one survives is now
+  deterministic rather than decided by set order.
 
 - Estimator categories are now built in first-appearance order (`dict.fromkeys`) rather than by
   iterating a `set`. Previously, string labels were assigned a different index in every interpreter
