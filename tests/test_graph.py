@@ -372,6 +372,40 @@ class TestTraversal(unittest.TestCase):
         self.assertEqual(len(g.start_node.get_edges(set(), set())), 6)
 
 
+class TestToTree(unittest.TestCase):
+    """Export graphs as nested dictionaries."""
+
+    def test_diamond_returns_expected_nested_dict(self):
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 10, "after": [{"node_id": 1}]},
+                3: {"payoff": 20, "after": [{"node_id": 1}]},
+                4: {"payoff": 30, "after": [{"node_id": 2}, {"node_id": 3}]},
+            }
+        )
+
+        self.assertEqual(g.to_tree(), {"1": {"2": {"4": None}, "3": {"4": None}}})
+
+    def test_terminal_only_graph(self):
+        g = Graph()
+        g.from_dict({7: {"payoff": 5, "after": []}})
+
+        self.assertEqual(g.to_tree(), {"7": None})
+
+    def test_deep_layered_graph_is_tractable(self):
+        g = Graph()
+        g.from_dict(_layered_spec(layers=15, width=3))
+
+        start = time.perf_counter()
+        tree = g.to_tree()
+        elapsed = time.perf_counter() - start
+
+        self.assertEqual(list(tree), ["0"])
+        self.assertLess(elapsed, 1.0)
+
+
 class TestToMermaid(unittest.TestCase):
     """Export to Mermaid diagram syntax."""
 

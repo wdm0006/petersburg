@@ -133,15 +133,23 @@ class Node:
             node_id = edge.get_outcome_node(feature_vector=feature_vector)
             return node_id
 
-    def to_tree(self):
+    def to_tree(self, memo=None):
+        if memo is None:
+            memo = {}
+        if self in memo:
+            return memo[self]
+
         if self.outcomes == []:
-            return {self.__repr__(): None}
+            tree = {self.__repr__(): None}
         else:
             blob = {}
             for x in self.outcomes:
-                blob.update(x[0].to_node.to_tree())
+                blob.update(x[0].to_node.to_tree(memo))
 
-            return {self.__repr__(): blob}
+            tree = {self.__repr__(): blob}
+
+        memo[self] = tree
+        return tree
 
     def get_nodes(self, node_list):
         if self in node_list:
