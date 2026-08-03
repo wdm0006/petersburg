@@ -1092,5 +1092,84 @@ class TestElasticitySign(unittest.TestCase):
             self.assertAlmostEqual(param["elasticity"], param["sensitivity"] / baseline_ev)
 
 
+class TestSensitivityParameterTypeValidation(unittest.TestCase):
+    """An unrecognized parameter_type is rejected instead of returning an empty report."""
+
+    ACCEPTED = ("edge_weights", "costs", "payoffs")
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _branching_graph(self):
+        """Start node 1 with two weighted, costed branches, so every type has candidates."""
+        return Graph().from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 100, "after": [{"node_id": 1, "cost": 10, "weight": 3}]},
+                3: {"payoff": 40, "after": [{"node_id": 1, "cost": 5, "weight": 1}]},
+            }
+        )
+
+    def _forbid_simulation(self, graph):
+        """Shadow get_outcome so any walk taken before validation fails the test loudly."""
+
+        def unexpected_get_outcome(*args, **kwargs):
+            raise AssertionError("get_outcome was called before parameter_type was validated")
+
+        graph.get_outcome = unexpected_get_outcome
+
+    def test_unrecognized_parameter_type_is_rejected(self):
+        graph = self._branching_graph()
+
+        for parameter_type in ("payoff", "cost", "weight", "", None):
+            with self.assertRaises(ValueError) as ctx:
+                graph.analyze_sensitivity(parameter_type=parameter_type, num_simulations=1)
+
+            message = str(ctx.exception)
+            self.assertIn(repr(parameter_type), message)
+            for accepted in self.ACCEPTED:
+                self.assertIn(accepted, message)
+
+    def test_validation_runs_before_the_baseline_simulations(self):
+        # A check placed after the baseline would still raise, but only after burning
+        # num_simulations walks; shadowing get_outcome makes that difference visible.
+        graph = self._branching_graph()
+        self._forbid_simulation(graph)
+
+        with self.assertRaises(ValueError):
+            graph.analyze_sensitivity(parameter_type="payoff", num_simulations=10_000_000)
+
+    def test_accepted_parameter_types_still_produce_results(self):
+        graph = self._branching_graph()
+
+        for parameter_type in self.ACCEPTED:
+            analysis = graph.analyze_sensitivity(
+                parameter_type=parameter_type, num_simulations=1, perturbation=0.1
+            )
+            self.assertEqual(analysis["parameter_type"], parameter_type)
+            self.assertGreaterEqual(analysis["candidate_parameters"], 1, parameter_type)
+            self.assertGreaterEqual(analysis["parameters_analyzed"], 1, parameter_type)
+            self.assertTrue(analysis["results"], parameter_type)
+
+    def test_default_parameter_type_still_runs(self):
+        analysis = self._branching_graph().analyze_sensitivity(num_simulations=1)
+
+        self.assertEqual(analysis["parameter_type"], "edge_weights")
+        self.assertEqual(analysis["parameters_analyzed"], 2)
+
+    def test_convenience_entry_points_are_unaffected(self):
+        graph = self._branching_graph()
+
+        result = graph.identify_critical_parameters(num_simulations=1, top_n=10, max_params=None)
+        self.assertEqual(result["total_parameters_analyzed"], len(result["top_parameters"]))
+        self.assertGreaterEqual(result["total_parameters_analyzed"], 6)
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            graph.print_sensitivity_report(num_simulations=1, top_n=3)
+        self.assertIn("Parameters Analyzed", buffer.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

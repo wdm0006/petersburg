@@ -21,6 +21,8 @@ from petersburg.nodes import (
 
 __author__ = "willmcginnis"
 
+SENSITIVITY_PARAMETER_TYPES = ("edge_weights", "costs", "payoffs")
+
 
 class Graph:
     """
@@ -511,9 +513,14 @@ class Graph:
         :param perturbation: How much to vary parameters, strictly between 0 and 1 (e.g., 0.1 = ±10%)
         :param max_params: Maximum number of parameters to analyze, or None for no limit
         :return: Dictionary with sensitivity results sorted by impact
+        :raises ValueError: If parameter_type is not one of 'edge_weights', 'costs', or 'payoffs'
         :raises ValueError: If perturbation is not strictly between 0 and 1
         """
         import numpy as np
+
+        if parameter_type not in SENSITIVITY_PARAMETER_TYPES:
+            accepted = ", ".join(repr(name) for name in SENSITIVITY_PARAMETER_TYPES)
+            raise ValueError(f"parameter_type must be one of {accepted}, got {parameter_type!r}")
 
         if not 0 < perturbation < 1:
             raise ValueError(f"perturbation must be strictly between 0 and 1, got {perturbation}")
@@ -692,7 +699,7 @@ class Graph:
         total_candidates = 0
 
         # Analyze all parameter types
-        for param_type in ["edge_weights", "costs", "payoffs"]:
+        for param_type in SENSITIVITY_PARAMETER_TYPES:
             analysis = self.analyze_sensitivity(
                 parameter_type=param_type,
                 num_simulations=num_simulations,
