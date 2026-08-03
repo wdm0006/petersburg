@@ -46,10 +46,13 @@ class Graph:
     Which represents a decision between 3 options with differing costs and outcomes. The starting point (of which there
     can only be one, is represented by an empty list in the 'after' key of a node.
 
+    :param random_state: Optional integer seed or ``numpy.random.Generator`` used for
+        edge selection and stochastic node payoffs.
     """
 
-    def __init__(self):
+    def __init__(self, random_state=None):
         self.start_node = None
+        self.rng = None if random_state is None else np.random.default_rng(random_state)
 
     def from_dict(self, d):
         """
@@ -80,16 +83,25 @@ class Graph:
 
             if node_type == "uniform":
                 new_node = UniformNode(
-                    key, node_spec.get("min_payoff", 0), node_spec.get("max_payoff", 0)
+                    key,
+                    node_spec.get("min_payoff", 0),
+                    node_spec.get("max_payoff", 0),
+                    rng=self.rng,
                 )
             elif node_type == "gaussian":
-                new_node = GaussianNode(key, node_spec.get("mean", 0), node_spec.get("std", 1))
+                new_node = GaussianNode(
+                    key, node_spec.get("mean", 0), node_spec.get("std", 1), rng=self.rng
+                )
             elif node_type == "lognormal":
-                new_node = LogNormalNode(key, node_spec.get("mu", 0), node_spec.get("sigma", 1))
+                new_node = LogNormalNode(
+                    key, node_spec.get("mu", 0), node_spec.get("sigma", 1), rng=self.rng
+                )
             elif node_type == "powerlaw":
-                new_node = PowerLawNode(key, node_spec.get("scale", 1), node_spec.get("alpha", 2))
+                new_node = PowerLawNode(
+                    key, node_spec.get("scale", 1), node_spec.get("alpha", 2), rng=self.rng
+                )
             else:  # 'fixed' or any other value defaults to Node
-                new_node = Node(key, payoff=node_spec.get("payoff", 0))
+                new_node = Node(key, payoff=node_spec.get("payoff", 0), rng=self.rng)
 
             if not node_spec["after"]:
                 if node is not None:

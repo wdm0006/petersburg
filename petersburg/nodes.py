@@ -9,7 +9,6 @@
 """
 
 import math
-import random
 from contextlib import contextmanager
 from numbers import Number
 
@@ -31,7 +30,7 @@ class Node:
     of the game.
     """
 
-    def __init__(self, node_id, payoff=0):
+    def __init__(self, node_id, payoff=0, rng=None):
         """
 
         :return:
@@ -39,7 +38,11 @@ class Node:
 
         self.node_id = node_id
         self.payoff = payoff
+        self.rng = rng
         self.outcomes = []
+
+    def _rng(self):
+        return self.rng if self.rng is not None else np.random
 
     def sample_payoff(self):
         """
@@ -99,7 +102,7 @@ class Node:
     def weighted_choice(self, feature_vector=None):
         choices = self.get_weights(feature_vector=feature_vector)
         total = sum(w for c, w in choices)
-        r = random.uniform(0, total)
+        r = self._rng().uniform(0, total)
         upto = 0
         for c, w in choices:
             if upto + w >= r:
@@ -188,7 +191,7 @@ class UniformNode(Node):
     Each time this node is reached, the payoff is sampled uniformly from [min_payoff, max_payoff].
     """
 
-    def __init__(self, node_id, min_payoff, max_payoff):
+    def __init__(self, node_id, min_payoff, max_payoff, rng=None):
         """
         Initialize a UniformNode with a uniform distribution range.
 
@@ -196,7 +199,7 @@ class UniformNode(Node):
         :param min_payoff: Minimum payoff value (inclusive)
         :param max_payoff: Maximum payoff value (inclusive)
         """
-        super().__init__(node_id, payoff=(min_payoff + max_payoff) / 2)
+        super().__init__(node_id, payoff=(min_payoff + max_payoff) / 2, rng=rng)
         self.min_payoff = min_payoff
         self.max_payoff = max_payoff
 
@@ -206,7 +209,7 @@ class UniformNode(Node):
 
         :return: float drawn from uniform[min_payoff, max_payoff]
         """
-        return np.random.uniform(self.min_payoff, self.max_payoff)
+        return self._rng().uniform(self.min_payoff, self.max_payoff)
 
     def _payoff_parameters(self):
         return {
@@ -228,7 +231,7 @@ class GaussianNode(Node):
     Each time this node is reached, the payoff is sampled from N(mean, std^2).
     """
 
-    def __init__(self, node_id, mean, std):
+    def __init__(self, node_id, mean, std, rng=None):
         """
         Initialize a GaussianNode with normal distribution parameters.
 
@@ -236,7 +239,7 @@ class GaussianNode(Node):
         :param mean: Mean of the normal distribution
         :param std: Standard deviation of the normal distribution
         """
-        super().__init__(node_id, payoff=mean)
+        super().__init__(node_id, payoff=mean, rng=rng)
         self.mean = mean
         self.std = std
 
@@ -246,7 +249,7 @@ class GaussianNode(Node):
 
         :return: float drawn from N(mean, std^2)
         """
-        return np.random.normal(self.mean, self.std)
+        return self._rng().normal(self.mean, self.std)
 
     def _payoff_parameters(self):
         return {"payoff": self.payoff, "mean": self.mean, "std": self.std}
@@ -266,7 +269,7 @@ class LogNormalNode(Node):
     independent random variables, and is always positive.
     """
 
-    def __init__(self, node_id, mu, sigma):
+    def __init__(self, node_id, mu, sigma, rng=None):
         """
         Initialize a LogNormalNode with log-normal distribution parameters.
 
@@ -274,7 +277,7 @@ class LogNormalNode(Node):
         :param mu: Mean of the underlying normal distribution (not the mean of the log-normal!)
         :param sigma: Standard deviation of the underlying normal distribution
         """
-        super().__init__(node_id, payoff=np.exp(mu + sigma**2 / 2))
+        super().__init__(node_id, payoff=np.exp(mu + sigma**2 / 2), rng=rng)
         self.mu = mu
         self.sigma = sigma
 
@@ -284,7 +287,7 @@ class LogNormalNode(Node):
 
         :return: float drawn from LogNormal(mu, sigma^2)
         """
-        return np.random.lognormal(self.mu, self.sigma)
+        return self._rng().lognormal(self.mu, self.sigma)
 
     def _payoff_parameters(self):
         return {"payoff": self.payoff, "mu": self.mu, "sigma": self.sigma}
@@ -303,7 +306,7 @@ class PowerLawNode(Node):
     wealth distributions, popularity, and rare high-value events.
     """
 
-    def __init__(self, node_id, scale, alpha):
+    def __init__(self, node_id, scale, alpha, rng=None):
         """
         Initialize a PowerLawNode with Pareto distribution parameters.
 
@@ -311,7 +314,11 @@ class PowerLawNode(Node):
         :param scale: Scale parameter (minimum possible value)
         :param alpha: Shape parameter (controls tail heaviness, alpha > 1)
         """
-        super().__init__(node_id, payoff=scale * alpha / (alpha - 1) if alpha > 1 else scale * 2)
+        super().__init__(
+            node_id,
+            payoff=scale * alpha / (alpha - 1) if alpha > 1 else scale * 2,
+            rng=rng,
+        )
         self.scale = scale
         self.alpha = alpha
 
@@ -321,7 +328,7 @@ class PowerLawNode(Node):
 
         :return: float drawn from Pareto(scale, alpha)
         """
-        return (np.random.pareto(self.alpha) + 1) * self.scale
+        return (self._rng().pareto(self.alpha) + 1) * self.scale
 
     def _payoff_parameters(self):
         return {"payoff": self.payoff, "scale": self.scale, "alpha": self.alpha}
