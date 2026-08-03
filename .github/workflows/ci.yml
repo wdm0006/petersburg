@@ -52,6 +52,65 @@ jobs:
       run: |
         uv run pytest
 
+  examples:
+    # The example scripts are linted by the `test` job but were never executed,
+    # so they had drifted into calling methods that do not exist. This job runs
+    # them for real and fails on a nonzero exit.
+    #
+    # Coverage is an explicit allowlist, NOT a glob — read it as covering exactly
+    # the scripts listed below and nothing else. Deliberately not covered:
+    #   * examples/stpetersburg_w_bankroll.py - simulates 10,000,000 games, far
+    #     too slow to run on every push.
+    #   * examples/estimation/ and examples/case_studies/ - out of scope here;
+    #     these are still only linted, never run.
+    # examples/print.py IS covered, but its g.plot() call needs a system Graphviz
+    # that this runner does not install. The script catches that failure itself
+    # and exits 0, so this job checks all of it except the actual image render.
+    runs-on: ubuntu-latest
+    env:
+      # Several examples call plt.show(); under an interactive backend they block
+      # forever instead of exiting.
+      MPLBACKEND: Agg
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "latest"
+        enable-cache: true
+
+    - name: Install dependencies
+      # Only the `examples` extra, so this also proves that extra is sufficient
+      # on its own for a user who follows the README.
+      run: |
+        uv pip install --system -e ".[examples]"
+
+    - name: Run examples
+      run: |
+        set -euo pipefail
+        for script in \
+          examples/automatic_sensitivity_demo.py \
+          examples/costwise_gradient.py \
+          examples/decision_vs_research.py \
+          examples/distribution_nodes_demo.py \
+          examples/necktie_paradox.py \
+          examples/outsourcing.py \
+          examples/print.py \
+          examples/simple_distribution_example.py \
+          examples/stpetersburg.py \
+          examples/two_envelope_problem.py
+        do
+          echo "::group::$script"
+          python "$script"
+          echo "::endgroup::"
+        done
+
   build:
     runs-on: ubuntu-latest
     steps:

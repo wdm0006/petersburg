@@ -295,13 +295,30 @@ uv run mypy petersburg/
 
 ### Running Examples
 
+The scripts in `examples/` need pandas and matplotlib on top of the runtime
+dependencies. Install the `examples` extra first (it is also part of `all`):
+
 ```bash
+uv pip install -e ".[examples]"
+```
+
+Several examples call `plt.show()`, which blocks under an interactive matplotlib
+backend, so set `MPLBACKEND=Agg` when running them unattended:
+
+```bash
+# Run a single example
+MPLBACKEND=Agg python examples/necktie_paradox.py
+
 # Run all examples
 make examples
 
 # Run all case studies
 make case-studies
 ```
+
+`examples/print.py` additionally needs a system Graphviz (plus pygraphviz) for
+its `plot()` call, and `examples/stpetersburg_w_bankroll.py` simulates 10 million
+games, so it takes several minutes.
 
 Contributing
 ============

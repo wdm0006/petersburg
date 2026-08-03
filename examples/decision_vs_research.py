@@ -130,11 +130,11 @@ if __name__ == "__main__":
     print("=" * 70)
     print()
 
-    # Display the graph structure as an adjacency matrix
-    print("GRAPH ADJACENCY MATRIX:")
-    print("(Shows the decision tree structure)")
+    # Display the graph structure as a Mermaid diagram
+    print("GRAPH STRUCTURE (Mermaid):")
+    print("(Paste into any Mermaid renderer to view the decision tree)")
     print()
-    print(g.adjacency_matrix())
+    print(g.to_mermaid())
     print()
 
     # Analyze expected outcomes for different decision paths
