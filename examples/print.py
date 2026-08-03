@@ -145,7 +145,7 @@ if __name__ == "__main__":
     )
 
     print("Graph built successfully!")
-    print(f"  Total nodes: {len(g.nodes)}")
+    print(f"  Total nodes: {len(g.node_list())}")
     print()
 
     # Create output directory if it doesn't exist
