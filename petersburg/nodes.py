@@ -23,6 +23,40 @@ def is_numeric_weight(weight):
     return not hasattr(weight, "predict_proba") and isinstance(weight, Number)
 
 
+def _validate_transition_weights(node_id, choices):
+    """
+    Check resolved transition weights before they are sampled from, and return their total.
+
+    Weights are relative, so they need not sum to one and an individual zero is fine as long as
+    some other outgoing weight is positive.
+
+    :param node_id: id of the node the weights belong to, used in error messages
+    :param choices: list of (edge, weight) pairs with classifier weights already resolved
+    :return: float total of the weights
+    """
+
+    total = 0.0
+    for edge, weight in choices:
+        try:
+            finite = math.isfinite(weight)
+        except TypeError:
+            finite = False
+        if not finite or weight < 0:
+            raise ValueError(
+                f"Node {node_id} has invalid transition weight {weight!r} on the edge to node "
+                f"{edge.to_node.node_id}; transition weights must be finite and non-negative"
+            )
+        total += weight
+
+    if not math.isfinite(total) or total <= 0:
+        raise ValueError(
+            f"Node {node_id} has transition weights totalling {total!r}; at least one outgoing "
+            f"weight must be positive and the total must be finite"
+        )
+
+    return total
+
+
 class Node:
     """
     A node represents a decision point. Once reached it has some payoff (possibly negative or zero), and some model for
@@ -101,11 +135,11 @@ class Node:
 
     def weighted_choice(self, feature_vector=None):
         choices = self.get_weights(feature_vector=feature_vector)
-        total = sum(w for c, w in choices)
+        total = _validate_transition_weights(self.node_id, choices)
         r = self._rng().uniform(0, total)
         upto = 0
         for c, w in choices:
-            if upto + w >= r:
+            if w > 0 and upto + w >= r:
                 return c
             upto += w
         raise AssertionError("Shouldn't get here")
