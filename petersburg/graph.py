@@ -73,6 +73,40 @@ class Graph:
         :return:
         """
 
+        successors = {node_id: [] for node_id in d}
+        for node_id, node_spec in d.items():
+            for edge in node_spec["after"]:
+                predecessor_id = edge["node_id"]
+                if predecessor_id not in d:
+                    raise AttributeError(
+                        f"Node {node_id} lists unknown predecessor node_id {predecessor_id} "
+                        f"in its 'after' list"
+                    )
+                successors[predecessor_id].append(node_id)
+
+        visiting = set()
+        visited = set()
+
+        def visit(node_id, path):
+            if node_id in visiting:
+                cycle_start = path.index(node_id)
+                cycle = path[cycle_start:] + [node_id]
+                cycle_description = " -> ".join(str(item) for item in cycle)
+                raise AttributeError(f"Graph contains a cycle: {cycle_description}")
+            if node_id in visited:
+                return
+
+            visiting.add(node_id)
+            path.append(node_id)
+            for successor_id in successors[node_id]:
+                visit(successor_id, path)
+            path.pop()
+            visiting.remove(node_id)
+            visited.add(node_id)
+
+        for node_id in d:
+            visit(node_id, [])
+
         # here we iterate through the dictionary and instantiate all of the node objects specified. One of them (and
         # exactly one of them), should be after nothing, and is the starting node, the rest go into a node list. Edges
         # are handled later.
@@ -116,23 +150,16 @@ class Graph:
         if node is None:
             raise AttributeError("Dict must contain a starting node (empty list for after key)")
 
-        # the start node is the entry point for basically everything we will do later on. It's the only part we actually
-        # need to keep around in the instance here, because all other nodes will be under it via reference once we
-        # process the edges.
-        self.start_node = node
-
         # now that we have a node list, we want to iterate through all of the other nodes, and then through the after
         # list specified for each, and add the connections that create the graph.
         for key in d:
             for edge in d[key]["after"]:
-                if edge["node_id"] not in node_list:
-                    raise AttributeError(
-                        f"Node {key} lists unknown predecessor node_id {edge['node_id']} "
-                        f"in its 'after' list"
-                    )
                 node_list[edge["node_id"]].add_outcome(
                     node_list[key], cost=edge.get("cost", 0), weight=edge.get("weight", 1)
                 )
+
+        # Keep the existing graph intact until the complete specification has been accepted.
+        self.start_node = node
 
         return self
 

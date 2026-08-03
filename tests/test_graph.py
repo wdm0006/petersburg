@@ -75,6 +75,50 @@ class TestGraphFromDict(unittest.TestCase):
         self.assertIn("99", message)
         self.assertIn("after", message)
 
+    def test_from_dict_self_cycle_raises_without_accepting_graph(self):
+        g = Graph()
+        with self.assertRaisesRegex(AttributeError, r"cycle.*2.*2"):
+            g.from_dict(
+                {
+                    1: {"payoff": 0, "after": []},
+                    2: {"payoff": 50, "after": [{"node_id": 2}]},
+                }
+            )
+        self.assertIsNone(g.start_node)
+
+    def test_from_dict_disconnected_cycle_raises_and_preserves_existing_graph(self):
+        g = Graph().from_dict({0: {"payoff": 5, "after": []}})
+        original_start = g.start_node
+
+        with self.assertRaisesRegex(AttributeError, r"cycle.*2.*3.*2"):
+            g.from_dict(
+                {
+                    1: {"payoff": 0, "after": []},
+                    2: {"payoff": 10, "after": [{"node_id": 3}]},
+                    3: {"payoff": 20, "after": [{"node_id": 2}]},
+                }
+            )
+
+        self.assertIs(g.start_node, original_start)
+        self.assertEqual(g.get_outcome(), 5)
+
+    def test_from_dict_converging_dag_constructs_and_simulates(self):
+        g = Graph(random_state=42).from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 10, "after": [{"node_id": 1, "weight": 1}]},
+                3: {"payoff": 10, "after": [{"node_id": 1, "weight": 1}]},
+                4: {
+                    "payoff": 20,
+                    "after": [{"node_id": 2}, {"node_id": 3}],
+                },
+            }
+        )
+
+        self.assertEqual({node.node_id for node in g.node_list()}, {1, 2, 3, 4})
+        self.assertEqual(len(g.edge_list()), 4)
+        self.assertEqual([g.get_outcome() for _ in range(5)], [30] * 5)
+
 
 class TestGetOutcome(unittest.TestCase):
     """Single-walk simulation through the graph."""
