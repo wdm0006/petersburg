@@ -165,6 +165,21 @@ outcomes = [g.get_outcome() for _ in range(10000)]
 print(f"Expected value: ${sum(outcomes)/len(outcomes):.2f}")
 ```
 
+### Reproducibility
+
+Pass an integer seed to reproduce a simulation, or pass an existing NumPy
+`Generator` to control its random stream:
+
+```python
+import numpy as np
+
+seeded_graph = Graph(random_state=7).from_dict(spec)
+generator_graph = Graph(random_state=np.random.default_rng(7)).from_dict(spec)
+```
+
+Graphs created with the same seed produce the same sequence of edge choices and
+stochastic payoffs. Omitting `random_state` keeps the default unseeded behavior.
+
 ### Automatic Sensitivity Analysis
 
 ```python

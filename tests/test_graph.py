@@ -146,6 +146,96 @@ class TestGetOutcome(unittest.TestCase):
         self.assertEqual(reached, {2, 3})
 
 
+class TestReproducibility(unittest.TestCase):
+    """Seeded graphs share one reproducible stream for choices and payoffs."""
+
+    @staticmethod
+    def _spec():
+        return {
+            0: {"payoff": 0, "after": []},
+            1: {"payoff": 1, "after": [{"node_id": 0}]},
+            2: {
+                "type": "uniform",
+                "min_payoff": 10,
+                "max_payoff": 20,
+                "after": [{"node_id": 1, "weight": 1}],
+            },
+            3: {
+                "type": "gaussian",
+                "mean": 30,
+                "std": 2,
+                "after": [{"node_id": 1, "weight": 1}],
+            },
+            4: {
+                "type": "lognormal",
+                "mu": 1,
+                "sigma": 0.2,
+                "after": [{"node_id": 2}],
+            },
+            5: {
+                "type": "powerlaw",
+                "scale": 5,
+                "alpha": 3,
+                "after": [{"node_id": 3}],
+            },
+        }
+
+    def _graph(self, random_state):
+        return Graph(random_state=random_state).from_dict(self._spec())
+
+    def test_same_seed_reproduces_simulation_apis_exactly(self):
+        first = self._graph(7)
+        second = self._graph(7)
+        self.assertEqual(
+            [first.get_outcome() for _ in range(50)],
+            [second.get_outcome() for _ in range(50)],
+        )
+
+        first = self._graph(7)
+        second = self._graph(7)
+        self.assertEqual(first.get_options(iters=50), second.get_options(iters=50))
+
+        first = self._graph(7)
+        second = self._graph(7)
+        first_analysis = first.analyze_sensitivity("payoffs", num_simulations=20, max_params=None)
+        second_analysis = second.analyze_sensitivity("payoffs", num_simulations=20, max_params=None)
+        self.assertEqual(first_analysis["baseline_ev"], second_analysis["baseline_ev"])
+        self.assertEqual(
+            [result["sensitivity"] for result in first_analysis["results"]],
+            [result["sensitivity"] for result in second_analysis["results"]],
+        )
+        self.assertEqual(
+            [result["elasticity"] for result in first_analysis["results"]],
+            [result["elasticity"] for result in second_analysis["results"]],
+        )
+
+    def test_different_seeds_produce_different_sequences(self):
+        first = self._graph(7)
+        second = self._graph(8)
+        self.assertNotEqual(
+            [first.get_outcome() for _ in range(50)],
+            [second.get_outcome() for _ in range(50)],
+        )
+
+    def test_generator_is_kept_and_assigned_to_every_node(self):
+        rng = np.random.default_rng(7)
+        graph = self._graph(rng)
+        self.assertIs(graph.rng, rng)
+        self.assertTrue(all(node.rng is rng for node in graph.node_list()))
+
+    def test_adjacency_matrix_nodes_receive_seeded_generator(self):
+        graph = Graph(random_state=7).from_adj_matrix(np.array([[0, 1], [0, 0]]))
+        self.assertTrue(all(node.rng is graph.rng for node in graph.node_list()))
+
+    def test_unseeded_graphs_remain_random(self):
+        first = self._graph(None)
+        second = self._graph(None)
+        self.assertNotEqual(
+            [first.get_outcome() for _ in range(50)],
+            [second.get_outcome() for _ in range(50)],
+        )
+
+
 class TestGetOptions(unittest.TestCase):
     """Expected-value comparison across the start node's initial choices."""
 
