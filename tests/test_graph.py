@@ -16,7 +16,14 @@ from contextlib import redirect_stdout
 
 import numpy as np
 
-from petersburg import Graph, Node
+from petersburg import (
+    GaussianNode,
+    Graph,
+    LogNormalNode,
+    Node,
+    PowerLawNode,
+    UniformNode,
+)
 
 __author__ = "willmcginnis"
 
@@ -118,6 +125,50 @@ class TestGraphFromDict(unittest.TestCase):
         self.assertEqual({node.node_id for node in g.node_list()}, {1, 2, 3, 4})
         self.assertEqual(len(g.edge_list()), 4)
         self.assertEqual([g.get_outcome() for _ in range(5)], [30] * 5)
+
+    def test_from_dict_rejects_unknown_type_and_preserves_existing_graph(self):
+        g = Graph().from_dict({0: {"payoff": 5, "after": []}})
+        original_start = g.start_node
+
+        with self.assertRaises(AttributeError) as ctx:
+            g.from_dict(
+                {
+                    1: {"payoff": 0, "after": []},
+                    2: {
+                        "type": "guassian",
+                        "mean": 100,
+                        "std": 5,
+                        "after": [{"node_id": 1}],
+                    },
+                }
+            )
+
+        message = str(ctx.exception)
+        self.assertIn("2", message)
+        self.assertIn("guassian", message)
+        for node_type in ("fixed", "uniform", "gaussian", "lognormal", "powerlaw"):
+            self.assertIn(node_type, message)
+        self.assertIs(g.start_node, original_start)
+
+    def test_from_dict_builds_every_accepted_node_type(self):
+        g = Graph().from_dict(
+            {
+                0: {"after": []},
+                1: {"type": "fixed", "after": [{"node_id": 0}]},
+                2: {"type": "uniform", "after": [{"node_id": 1}]},
+                3: {"type": "Gaussian", "after": [{"node_id": 2}]},
+                4: {"type": "lognormal", "after": [{"node_id": 3}]},
+                5: {"type": "powerlaw", "after": [{"node_id": 4}]},
+            }
+        )
+
+        nodes = {node.node_id: node for node in g.node_list()}
+        self.assertIs(type(nodes[0]), Node)
+        self.assertIs(type(nodes[1]), Node)
+        self.assertIs(type(nodes[2]), UniformNode)
+        self.assertIs(type(nodes[3]), GaussianNode)
+        self.assertIs(type(nodes[4]), LogNormalNode)
+        self.assertIs(type(nodes[5]), PowerLawNode)
 
 
 class TestGetOutcome(unittest.TestCase):
