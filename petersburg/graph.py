@@ -22,6 +22,7 @@ from petersburg.nodes import (
 __author__ = "willmcginnis"
 
 SENSITIVITY_PARAMETER_TYPES = ("edge_weights", "costs", "payoffs")
+NODE_TYPES = ("fixed", "uniform", "gaussian", "lognormal", "powerlaw")
 
 
 class Graph:
@@ -67,6 +68,17 @@ class Graph:
         :return:
         """
 
+        node_types = {}
+        for node_id, node_spec in d.items():
+            node_type = node_spec.get("type", "fixed").lower()
+            if node_type not in NODE_TYPES:
+                accepted = ", ".join(repr(name) for name in NODE_TYPES)
+                raise AttributeError(
+                    f"Node {node_id} has unrecognized type {node_type!r}; "
+                    f"accepted types are: {accepted}"
+                )
+            node_types[node_id] = node_type
+
         successors = {node_id: [] for node_id in d}
         for node_id, node_spec in d.items():
             for edge in node_spec["after"]:
@@ -109,7 +121,7 @@ class Graph:
         for key in d:
             # Create the appropriate node type based on the 'type' key
             node_spec = d[key]
-            node_type = node_spec.get("type", "fixed").lower()
+            node_type = node_types[key]
 
             if node_type == "uniform":
                 new_node = UniformNode(
@@ -130,7 +142,7 @@ class Graph:
                 new_node = PowerLawNode(
                     key, node_spec.get("scale", 1), node_spec.get("alpha", 2), rng=self.rng
                 )
-            else:  # 'fixed' or any other value defaults to Node
+            else:  # fixed
                 new_node = Node(key, payoff=node_spec.get("payoff", 0), rng=self.rng)
 
             if not node_spec["after"]:
