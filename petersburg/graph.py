@@ -31,22 +31,16 @@ class Graph:
     Example:
 
     >>> from petersburg import Graph
-    >>> g = Graph()
-    >>> g.from_dict({
-    >>>      1: {'payoff': 0, 'after': []},
-    >>>      2: {'payoff': 0, 'after': [{'node_id': 1, 'cost': 10}]},
-    >>>      3: {'payoff': 0, 'after': [{'node_id': 1, 'cost': 10}]},
-    >>>      4: {'payoff': 0, 'after': [{'node_id': 1, 'cost': 10}]},
-    >>>      5: {'payoff': 0, 'after': [{'node_id': 2, 'cost': 5}, {'node_id': 3, 'cost': 10}]},
-    >>>      6: {'payoff': 0, 'after': [{'node_id': 2, 'cost': 5}, {'node_id': 4, 'cost': 10}]},
-    >>>      7: {'payoff': 10, 'after': [{'node_id': 5, 'cost': 0}]},
-    >>>      8: {'payoff': 3, 'after': [{'node_id': 5, 'cost': 0}]},
-    >>>      9: {'payoff': 10, 'after': [{'node_id': 6, 'cost': 0}]},
-    >>>      10: {'payoff': 3, 'after': [{'node_id': 6, 'cost': 0}]},
-    >>> })
+    >>> g = Graph(random_state=42)
+    >>> _ = g.from_dict({
+    ...     1: {"payoff": 0, "after": []},
+    ...     2: {"payoff": 10, "after": [{"node_id": 1, "cost": 3}]},
+    ... })
+    >>> g.get_outcome()
+    7
 
-    Which represents a decision between 3 options with differing costs and outcomes. The starting point (of which there
-    can only be one, is represented by an empty list in the 'after' key of a node.
+    This represents a decision with one outcome. The starting point (of which there
+    can only be one) is represented by an empty list in the 'after' key of a node.
 
     :param random_state: Optional integer seed or ``numpy.random.Generator`` used for
         edge selection and stochastic node payoffs.
