@@ -13,11 +13,31 @@ import unittest
 from unittest import mock
 
 import numpy as np
+from sklearn.base import clone
 
 from petersburg import FrequencyEstimator, MixedModeEstimator
 from petersburg import graph as pg
 
 __author__ = "willmcginnis"
+
+
+def _classifier_training_data():
+    """
+    Training data with enough support for MixedModeEstimator to train real classifiers.
+
+    Source (0,0) transitions to two terminals with a clean feature split:
+      150 rows -> (1,0) with feature near 0
+      100 rows -> (1,1) with feature near 10  (exactly the 100-sample threshold)
+    """
+    np.random.seed(0)
+    rows, feats = [], []
+    for _ in range(150):
+        rows.append([0, 0])
+        feats.append([np.random.normal(0.0, 0.5)])
+    for _ in range(100):
+        rows.append([0, 1])
+        feats.append([np.random.normal(10.0, 0.5)])
+    return np.array(feats), np.array(rows)
 
 
 def _terminal_labels(categories):
@@ -181,22 +201,8 @@ class TestMixedModeEstimatorFrequencyFallback(unittest.TestCase):
 class TestMixedModeEstimatorClassifierBacked(unittest.TestCase):
     """At/above the sample threshold, transitions get feature-dependent classifiers."""
 
-    def _training_data(self):
-        # Source (0,0) transitions to two terminals with a clean feature split:
-        #   150 rows -> (1,0) with feature near 0
-        #   100 rows -> (1,1) with feature near 10  (exactly the 100-sample threshold)
-        np.random.seed(0)
-        rows, feats = [], []
-        for _ in range(150):
-            rows.append([0, 0])
-            feats.append([np.random.normal(0.0, 0.5)])
-        for _ in range(100):
-            rows.append([0, 1])
-            feats.append([np.random.normal(10.0, 0.5)])
-        return np.array(feats), np.array(rows)
-
     def test_classifier_trained_at_threshold(self):
-        X, y = self._training_data()
+        X, y = _classifier_training_data()
         est = MixedModeEstimator(num_simulations=25).fit(X, y)
 
         i00 = est._categories.index((0, 0))
@@ -212,7 +218,7 @@ class TestMixedModeEstimatorClassifierBacked(unittest.TestCase):
         self.assertTrue(all(clf is None for clf in est._clf_matrix[i11]))
 
     def test_prediction_is_feature_dependent(self):
-        X, y = self._training_data()
+        X, y = _classifier_training_data()
         est = MixedModeEstimator(num_simulations=25).fit(X, y)
 
         # A low-feature row routes to the low-feature terminal; a high one to the other,
@@ -275,6 +281,100 @@ class TestCategoryOrderDeterminism(unittest.TestCase):
         self.assertEqual(len(outputs), 1)
         expected = [(0, "apply")] + [(1, label) for label in self.LABELS]
         self.assertEqual(outputs.pop().strip(), str(expected))
+
+
+class TestEstimatorReproducibility(unittest.TestCase):
+    """random_state pins predict without touching the process-global np.random stream."""
+
+    ESTIMATORS = (FrequencyEstimator, MixedModeEstimator)
+    TERMINALS = ["approved", "rejected", "delayed", "appealed"]
+
+    def _fixture(self):
+        # One source category branching to four near-equally weighted terminals, so a
+        # majority vote over num_simulations walks genuinely varies when it is unseeded.
+        y = np.array([["apply", self.TERMINALS[idx % len(self.TERMINALS)]] for idx in range(20)])
+        return np.zeros((20, 1)), y, np.zeros((12, 1))
+
+    def _predict(self, est, X_predict):
+        return est.predict(X_predict).ravel().tolist()
+
+    def test_random_state_is_stored_verbatim_and_survives_clone(self):
+        generator = np.random.default_rng(3)
+        for cls in self.ESTIMATORS:
+            with self.subTest(estimator=cls.__name__):
+                self.assertIsNone(cls().get_params()["random_state"])
+                self.assertEqual(cls(random_state=7).get_params()["random_state"], 7)
+                self.assertEqual(clone(cls(random_state=7)).get_params()["random_state"], 7)
+
+                # Not normalized into a Generator in __init__, or get_params/clone would
+                # hand back something the constructor was never called with.
+                self.assertIs(cls(random_state=generator).random_state, generator)
+
+    def test_predict_is_repeatable_with_a_seed(self):
+        X_fit, y, X_predict = self._fixture()
+        for cls in self.ESTIMATORS:
+            with self.subTest(estimator=cls.__name__):
+                est = cls(random_state=7).fit(X_fit, y)
+                first = self._predict(est, X_predict)
+
+                # Every call rebuilds the graph from the same seed, so the answer is stable.
+                for _ in range(5):
+                    self.assertEqual(self._predict(est, X_predict), first)
+
+    def test_predict_varies_without_a_seed(self):
+        # Non-vacuity check for the test above: this fixture really does move around.
+        X_fit, y, X_predict = self._fixture()
+        for cls in self.ESTIMATORS:
+            with self.subTest(estimator=cls.__name__):
+                random.seed(42)
+                np.random.seed(42)
+                est = cls().fit(X_fit, y)
+                results = {tuple(self._predict(est, X_predict)) for _ in range(5)}
+
+                self.assertGreaterEqual(len(results), 2)
+
+    def test_same_seed_agrees_and_different_seeds_differ(self):
+        X_fit, y, X_predict = self._fixture()
+        for cls in self.ESTIMATORS:
+            with self.subTest(estimator=cls.__name__):
+                same = [
+                    self._predict(cls(random_state=7).fit(X_fit, y), X_predict) for _ in range(2)
+                ]
+                other = self._predict(cls(random_state=8).fit(X_fit, y), X_predict)
+
+                self.assertEqual(same[0], same[1])
+                self.assertNotEqual(same[0], other)
+
+    def test_mixed_mode_seeds_its_classifiers(self):
+        # A fitted model has to be reproducible end to end, not just at simulation time.
+        X, y = _classifier_training_data()
+        est = MixedModeEstimator(random_state=7).fit(X, y)
+
+        trained = [clf for row in est._clf_matrix for clf in row if clf is not None]
+        self.assertTrue(trained)
+        self.assertTrue(all(clf.random_state == 7 for clf in trained))
+
+        # The seed is threaded in for the call only; _clf_args is left as the class set it.
+        self.assertEqual(est._clf_args, {})
+
+    def test_mixed_mode_keeps_an_explicit_classifier_seed(self):
+        X, y = _classifier_training_data()
+        est = MixedModeEstimator(random_state=7)
+        est._clf_args = {"random_state": 99}
+        est.fit(X, y)
+
+        trained = [clf for row in est._clf_matrix for clf in row if clf is not None]
+        self.assertTrue(trained)
+        self.assertTrue(all(clf.random_state == 99 for clf in trained))
+
+    def test_mixed_mode_does_not_hand_a_generator_to_its_classifiers(self):
+        # LogisticRegression accepts None, an int, or a RandomState -- never a Generator.
+        X, y = _classifier_training_data()
+        est = MixedModeEstimator(random_state=np.random.default_rng(7)).fit(X, y)
+
+        trained = [clf for row in est._clf_matrix for clf in row if clf is not None]
+        self.assertTrue(trained)
+        self.assertTrue(all(clf.random_state is None for clf in trained))
 
 
 if __name__ == "__main__":
