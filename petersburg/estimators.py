@@ -47,12 +47,22 @@ def _terminal_label(categories, node_id):
 
 
 class FrequencyEstimator(BaseEstimator, ClassifierMixin):
+    """
+    Predicts a terminal category by simulating a graph built from observed transition frequencies.
 
-    def __init__(self, verbose=False, num_simulations=10):
+    :param random_state: Optional integer seed or ``numpy.random.Generator`` used for
+        edge selection and stochastic node payoffs. Each ``predict`` call builds a fresh
+        graph from it, so with an integer seed repeated ``predict`` calls on one fitted
+        estimator return identical output. A ``Generator`` is shared rather than restarted,
+        so its state advances from call to call.
+    """
+
+    def __init__(self, verbose=False, num_simulations=10, random_state=None):
         self._frequency_matrix = None
         self.num_simulations = num_simulations
         self._categories = None
         self.verbose = verbose
+        self.random_state = random_state
 
     @property
     def _cateogry_labels(self):
@@ -131,7 +141,7 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
         :return:
         """
 
-        g = pg.Graph()
+        g = pg.Graph(random_state=self.random_state)
 
         g.from_adj_matrix(self._frequency_matrix, self._categories)
 
@@ -151,9 +161,17 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
 class MixedModeEstimator(BaseEstimator, ClassifierMixin):
     """
     Similar to the frequency estimator, but will use a classifier to predict conditional probabilities where possible
+
+    :param random_state: Optional integer seed or ``numpy.random.Generator`` used for
+        edge selection and stochastic node payoffs. Each ``predict`` call builds a fresh
+        graph from it, so with an integer seed repeated ``predict`` calls on one fitted
+        estimator return identical output. A ``Generator`` is shared rather than restarted,
+        so its state advances from call to call. The seed is also passed to the per-transition
+        classifiers at fit time unless ``_clf_args`` already fixes it; a ``Generator`` is not,
+        because scikit-learn estimators accept only ``None``, an int, or a ``RandomState``.
     """
 
-    def __init__(self, verbose=False, num_simulations=10):
+    def __init__(self, verbose=False, num_simulations=10, random_state=None):
 
         self._clf = LogisticRegression
         self._clf_args = {}
@@ -165,6 +183,7 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
 
         self._min_samples = 100
         self.num_simulations = num_simulations
+        self.random_state = random_state
 
         self.verbose = verbose
 
@@ -187,6 +206,26 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
         normed_matrix = self._frequency_matrix / row_sums[:, np.newaxis]
 
         return normed_matrix
+
+    def _classifier_args(self):
+        """
+        The keyword arguments each per-transition classifier is constructed with.
+
+        ``random_state`` is added so a fitted model is reproducible end to end, unless
+        ``_clf_args`` already fixes it. A ``numpy.random.Generator`` is left out because
+        scikit-learn accepts only ``None``, an int, or a ``RandomState``; it still seeds
+        the simulation graph.
+
+        :return: a new dict of classifier keyword arguments
+        """
+
+        clf_args = dict(self._clf_args)
+        if "random_state" not in clf_args and not isinstance(
+            self.random_state, np.random.Generator
+        ):
+            clf_args["random_state"] = self.random_state
+
+        return clf_args
 
     def _update_frequencies(self, y):
         # set up the categories corresponding to each index
@@ -218,6 +257,8 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
 
         # first update the frequencies
         self._update_frequencies(y)
+
+        clf_args = self._classifier_args()
 
         # empty out the clf matrix
         self._clf_matrix = [
@@ -252,7 +293,7 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
                     y_t = y_t == label_term
 
                     try:
-                        self._clf_matrix[r_idx][c_idx] = self._clf(**self._clf_args).fit(X_t, y_t)
+                        self._clf_matrix[r_idx][c_idx] = self._clf(**clf_args).fit(X_t, y_t)
                     except ValueError:
                         self._clf_matrix[r_idx][c_idx] = None
 
@@ -270,7 +311,7 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
         :return:
         """
 
-        g = pg.Graph()
+        g = pg.Graph(random_state=self.random_state)
 
         g.from_adj_matrix(self._frequency_matrix, self._categories, clf_matrix=self._clf_matrix)
 
