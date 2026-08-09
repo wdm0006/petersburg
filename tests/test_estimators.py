@@ -240,6 +240,40 @@ class TestMixedModeEstimatorClassifierBacked(unittest.TestCase):
                 est.predict(X)
 
 
+class TestEstimatorScore(unittest.TestCase):
+    """score compares predictions with the terminal column of a path target."""
+
+    ESTIMATORS = (FrequencyEstimator, MixedModeEstimator)
+
+    def test_terminal_label_accuracy(self):
+        X = np.zeros((3, 1))
+        y = np.array([["apply", "approved"]] * 3)
+
+        for cls in self.ESTIMATORS:
+            with self.subTest(estimator=cls.__name__):
+                est = cls(num_simulations=1).fit(X, y)
+
+                self.assertEqual(est.score(X, y), 1.0)
+                incorrect = np.array([["apply", "rejected"]] * 3)
+                self.assertEqual(est.score(X, incorrect), 0.0)
+
+                y_hat = est.predict(X)
+                self.assertEqual(y_hat.shape, (3, 1))
+                self.assertEqual(y_hat.dtype, object)
+                self.assertEqual(y_hat.ravel().tolist(), ["approved"] * 3)
+
+    def test_score_rejects_invalid_path_target_shape(self):
+        X = np.zeros((3, 1))
+        y = np.array([["apply", "approved"]] * 3)
+
+        for cls in self.ESTIMATORS:
+            est = cls(num_simulations=1).fit(X, y)
+            for invalid_y in (y[:, -1], np.empty((3, 0))):
+                with self.subTest(estimator=cls.__name__, shape=invalid_y.shape):
+                    with self.assertRaisesRegex(ValueError, "non-empty 2D path target"):
+                        est.score(X, invalid_y)
+
+
 class TestCategoryOrderDeterminism(unittest.TestCase):
     """Category indices must depend on the data alone, never on set iteration order."""
 
