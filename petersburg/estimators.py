@@ -3,6 +3,7 @@ from collections import Counter
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
 
 from petersburg import graph as pg
 
@@ -44,6 +45,16 @@ def _terminal_label(categories, node_id):
         )
 
     return categories[node_id][1]
+
+
+def _terminal_accuracy(estimator, X, y, sample_weight=None):
+    """Return accuracy against the terminal column of a path target."""
+
+    y = np.asarray(y)
+    if y.ndim != 2 or y.shape[1] == 0:
+        raise ValueError("y must be a non-empty 2D path target")
+
+    return accuracy_score(y[:, -1], estimator.predict(X).ravel(), sample_weight=sample_weight)
 
 
 class FrequencyEstimator(BaseEstimator, ClassifierMixin):
@@ -156,6 +167,11 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
             y_hat[r_idx, 0] = _terminal_label(self._categories, sims.most_common(1)[0][0])
 
         return y_hat
+
+    def score(self, X, y, sample_weight=None):
+        """Return the accuracy of predicted terminal labels."""
+
+        return _terminal_accuracy(self, X, y, sample_weight=sample_weight)
 
 
 class MixedModeEstimator(BaseEstimator, ClassifierMixin):
@@ -326,3 +342,8 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
             y_hat[r_idx, 0] = _terminal_label(self._categories, sims.most_common(1)[0][0])
 
         return y_hat
+
+    def score(self, X, y, sample_weight=None):
+        """Return the accuracy of predicted terminal labels."""
+
+        return _terminal_accuracy(self, X, y, sample_weight=sample_weight)
