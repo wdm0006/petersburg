@@ -288,6 +288,9 @@ class Graph:
         Starts with each of the outcomes from the starting node seperately, to get the expected values (using iters
         iterations) for each of the initial options. Returns a dictionary of node_id: expected profit pairs.
 
+        Each simulated option value includes one sample of the starting node's own payoff, so option
+        values are on the same scale as :meth:`get_outcome`.
+
         :param iters:
         :param extended_stats:
         :param feature_vector: Features passed to classifier-weighted edges. Required when
@@ -300,7 +303,7 @@ class Graph:
             out = []
             for _ in range(iters):
                 payoff, cost = outcome[0].get_outcome(feature_vector=feature_vector)
-                out.append(payoff - cost - outcome[0].cost)
+                out.append(payoff + self.start_node.sample_payoff() - cost - outcome[0].cost)
             if not extended_stats:
                 choice.update({outcome[0].to_node.node_id: float(sum(out)) / len(out)})
             else:
