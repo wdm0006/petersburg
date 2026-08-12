@@ -12,6 +12,7 @@ import sys
 import textwrap
 import time
 import unittest
+import warnings
 from contextlib import redirect_stdout
 
 import numpy as np
@@ -560,10 +561,34 @@ class TestFromAdjMatrix(unittest.TestCase):
         self.assertTrue(np.isfinite(edge_weights[(0, 1)]))
         self.assertEqual(g.get_outcome_node(), 1)
 
-    def test_non_square_matrix_raises(self):
+    def test_invalid_shape_raises_descriptive_error(self):
         g = Graph()
-        with self.assertRaises(ValueError):
-            g.from_adj_matrix(np.zeros((2, 3)))
+        for A in (np.array([0, 1]), np.zeros((2, 3))):
+            with self.subTest(shape=A.shape):
+                with self.assertRaisesRegex(ValueError, "two-dimensional square"):
+                    g.from_adj_matrix(A)
+
+    def test_negative_entries_raise_and_preserve_existing_graph(self):
+        g = Graph().from_dict({0: {"payoff": 5, "after": []}})
+        original_start = g.start_node
+
+        with self.assertRaisesRegex(ValueError, "non-negative"):
+            g.from_adj_matrix(np.array([[0.0, -1.0], [0.0, 0.0]]))
+
+        self.assertIs(g.start_node, original_start)
+        self.assertEqual(g.get_outcome(), 5)
+
+    def test_infinite_entries_raise_without_runtime_warnings(self):
+        for value in (np.inf, -np.inf):
+            with self.subTest(value=value):
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", RuntimeWarning)
+                    with self.assertRaisesRegex(ValueError, "finite or NaN"):
+                        Graph().from_adj_matrix(np.array([[0.0, value], [0.0, 0.0]]))
+
+    def test_non_numeric_entries_raise_descriptive_error(self):
+        with self.assertRaisesRegex(ValueError, "real numeric"):
+            Graph().from_adj_matrix(np.array([[0, "one"], [0, 0]]))
 
 
 def _layered_spec(layers, width):
