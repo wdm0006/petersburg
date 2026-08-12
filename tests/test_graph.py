@@ -1187,6 +1187,124 @@ class TestElasticitySign(unittest.TestCase):
             self.assertAlmostEqual(param["elasticity"], param["sensitivity"] / baseline_ev)
 
 
+class TestSensitivityBaselineReuse(unittest.TestCase):
+    """One Monte Carlo baseline is shared by every parameter type in a merged report."""
+
+    SUPPLIED_BASELINE = 123.0
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _mixed_graph(self):
+        """Two branches with nonzero weights, costs and payoffs, one of them heavy-tailed.
+
+        The power-law payoff makes independently drawn baselines differ by a wide margin,
+        which is what a single shared baseline has to eliminate.
+        """
+        return Graph(random_state=7).from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 20, "after": [{"node_id": 1, "cost": 5, "weight": 3}]},
+                3: {
+                    "type": "powerlaw",
+                    "scale": 100,
+                    "alpha": 1.5,
+                    "after": [{"node_id": 1, "cost": 10, "weight": 1}],
+                },
+            }
+        )
+
+    def _count_walks(self, graph):
+        """Shadow get_outcome on the instance so simulated walks can be counted exactly."""
+        calls = []
+        real_get_outcome = graph.get_outcome
+
+        def counting_get_outcome(*args, **kwargs):
+            calls.append(1)
+            return real_get_outcome(*args, **kwargs)
+
+        graph.get_outcome = counting_get_outcome
+        return calls
+
+    def test_supplied_baseline_skips_the_baseline_simulations(self):
+        graph = self._mixed_graph()
+        calls = self._count_walks(graph)
+
+        analysis = graph.analyze_sensitivity(
+            parameter_type="costs",
+            num_simulations=4,
+            perturbation=0.1,
+            max_params=None,
+            baseline_ev=self.SUPPLIED_BASELINE,
+        )
+
+        self.assertEqual(analysis["baseline_ev"], self.SUPPLIED_BASELINE)
+        self.assertEqual(analysis["parameters_analyzed"], 2)
+        for param in analysis["results"]:
+            self.assertEqual(param["baseline_ev"], self.SUPPLIED_BASELINE)
+        # Two arms per parameter and nothing else: no baseline walks were taken.
+        self.assertEqual(len(calls), 2 * 2 * 4)
+
+    def test_omitted_baseline_simulates_one_as_before(self):
+        graph = self._mixed_graph()
+        calls = self._count_walks(graph)
+
+        analysis = graph.analyze_sensitivity(
+            parameter_type="costs", num_simulations=4, perturbation=0.1, max_params=None
+        )
+
+        self.assertEqual(analysis["parameters_analyzed"], 2)
+        self.assertEqual(len(calls), 4 + 2 * 2 * 4)
+        for param in analysis["results"]:
+            self.assertEqual(param["baseline_ev"], analysis["baseline_ev"])
+
+    def test_every_top_parameter_shares_the_reported_baseline(self):
+        # A single parameter type could not distinguish shared from per-type baselines,
+        # so this fixture has candidates for weights, costs and payoffs alike.
+        result = self._mixed_graph().identify_critical_parameters(
+            num_simulations=50, perturbation=0.1, top_n=100, max_params=None
+        )
+
+        kinds = {param["parameter"].rsplit(" ", 1)[-1] for param in result["top_parameters"]}
+        self.assertEqual(kinds, {"weight", "cost", "payoff"})
+        for param in result["top_parameters"]:
+            self.assertEqual(param["baseline_ev"], result["baseline_ev"], param["parameter"])
+
+    def test_one_baseline_is_simulated_for_all_three_parameter_types(self):
+        graph = self._mixed_graph()
+        calls = self._count_walks(graph)
+
+        result = graph.identify_critical_parameters(
+            num_simulations=3, perturbation=0.1, top_n=100, max_params=None
+        )
+
+        # One baseline plus two arms per analyzed parameter — per-type baselines would
+        # add 2 * num_simulations walks on top of this.
+        expected = 3 + 2 * 3 * result["total_parameters_analyzed"]
+        self.assertEqual(len(calls), expected)
+
+    def test_graph_without_candidates_still_reports_a_baseline(self):
+        graph = Graph().from_dict({1: {"payoff": 0, "after": []}})
+
+        result = graph.identify_critical_parameters(num_simulations=5, max_params=None)
+
+        self.assertEqual(result["total_parameters_analyzed"], 0)
+        self.assertEqual(result["top_parameters"], [])
+        self.assertEqual(result["baseline_ev"], 0)
+
+    def test_perturbation_is_validated_before_any_baseline_walk(self):
+        graph = self._mixed_graph()
+
+        def unexpected_get_outcome(*args, **kwargs):
+            raise AssertionError("get_outcome was called before perturbation was validated")
+
+        graph.get_outcome = unexpected_get_outcome
+
+        with self.assertRaises(ValueError):
+            graph.identify_critical_parameters(num_simulations=10_000_000, perturbation=1.5)
+
+
 class TestSensitivityParameterTypeValidation(unittest.TestCase):
     """An unrecognized parameter_type is rejected instead of returning an empty report."""
 

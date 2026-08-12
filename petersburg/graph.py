@@ -527,8 +527,38 @@ class Graph:
         """
         return (sensitivity / abs(baseline_ev)) if baseline_ev != 0 else 0
 
+    @staticmethod
+    def _validate_perturbation(perturbation):
+        """
+        Reject a perturbation that is not strictly between 0 and 1.
+
+        :param perturbation: Fractional parameter variation
+        :raises ValueError: If perturbation is not strictly between 0 and 1
+        """
+        if not 0 < perturbation < 1:
+            raise ValueError(f"perturbation must be strictly between 0 and 1, got {perturbation}")
+
+    def _baseline_expected_value(self, num_simulations):
+        """
+        Estimate the unperturbed expected value by Monte Carlo simulation.
+
+        :param num_simulations: Number of walks to average
+        :return: Mean net profit over the simulated walks
+        """
+        import numpy as np
+
+        baseline_outcomes = []
+        for _ in range(num_simulations):
+            baseline_outcomes.append(self.get_outcome())
+        return np.mean(baseline_outcomes)
+
     def analyze_sensitivity(
-        self, parameter_type="edge_weights", num_simulations=1000, perturbation=0.1, max_params=10
+        self,
+        parameter_type="edge_weights",
+        num_simulations=1000,
+        perturbation=0.1,
+        max_params=10,
+        baseline_ev=None,
     ):
         """
         Automatically analyze sensitivity of outcomes to graph parameters.
@@ -545,6 +575,8 @@ class Graph:
         :param num_simulations: Number of Monte Carlo simulations per parameter value
         :param perturbation: How much to vary parameters, strictly between 0 and 1 (e.g., 0.1 = ±10%)
         :param max_params: Maximum number of parameters to analyze, or None for no limit
+        :param baseline_ev: Pre-computed baseline expected value to normalize against, or
+            None to estimate it here with ``num_simulations`` walks
         :return: Dictionary with sensitivity results sorted by impact
         :raises ValueError: If parameter_type is not one of 'edge_weights', 'costs', or 'payoffs'
         :raises ValueError: If perturbation is not strictly between 0 and 1
@@ -555,14 +587,11 @@ class Graph:
             accepted = ", ".join(repr(name) for name in SENSITIVITY_PARAMETER_TYPES)
             raise ValueError(f"parameter_type must be one of {accepted}, got {parameter_type!r}")
 
-        if not 0 < perturbation < 1:
-            raise ValueError(f"perturbation must be strictly between 0 and 1, got {perturbation}")
+        self._validate_perturbation(perturbation)
 
-        # Get baseline expected value
-        baseline_outcomes = []
-        for _ in range(num_simulations):
-            baseline_outcomes.append(self.get_outcome())
-        baseline_ev = np.mean(baseline_outcomes)
+        # Get baseline expected value, unless the caller already has one
+        if baseline_ev is None:
+            baseline_ev = self._baseline_expected_value(num_simulations)
 
         sensitivity_results = []
         candidate_count = 0
@@ -721,23 +750,32 @@ class Graph:
         This is a convenience method that analyzes weights, costs, and payoffs, then
         returns the top N most impactful parameters regardless of type.
 
+        The baseline expected value is estimated once and shared by all three analyses,
+        so every elasticity in the merged table is normalized against the same number
+        and the reported baseline does not depend on which type happened to rank first.
+
         :param num_simulations: Number of Monte Carlo simulations per parameter
         :param perturbation: How much to vary parameters (e.g., 0.1 = ±10%)
         :param top_n: Number of top parameters to return
         :param max_params: Maximum number of parameters analyzed per parameter type,
             or None for no limit
         :return: Dictionary with analysis summary and top parameters
+        :raises ValueError: If perturbation is not strictly between 0 and 1
         """
+        self._validate_perturbation(perturbation)
+        baseline_ev = self._baseline_expected_value(num_simulations)
+
         all_results = []
         total_candidates = 0
 
-        # Analyze all parameter types
+        # Analyze all parameter types against the one shared baseline
         for param_type in SENSITIVITY_PARAMETER_TYPES:
             analysis = self.analyze_sensitivity(
                 parameter_type=param_type,
                 num_simulations=num_simulations,
                 perturbation=perturbation,
                 max_params=max_params,
+                baseline_ev=baseline_ev,
             )
             all_results.extend(analysis["results"])
             total_candidates += analysis["candidate_parameters"]
@@ -749,7 +787,7 @@ class Graph:
         top_parameters = all_results[:top_n]
 
         return {
-            "baseline_ev": all_results[0]["baseline_ev"] if all_results else 0,
+            "baseline_ev": baseline_ev,
             "max_params": max_params,
             "total_candidate_parameters": total_candidates,
             "total_parameters_analyzed": len(all_results),
