@@ -14,6 +14,7 @@ from unittest import mock
 
 import numpy as np
 from sklearn.base import clone
+from sklearn.exceptions import NotFittedError
 
 from petersburg import FrequencyEstimator, MixedModeEstimator
 from petersburg import graph as pg
@@ -111,12 +112,17 @@ class TestFrequencyEstimatorPartialFit(unittest.TestCase):
         self.assertEqual(set(est._categories), {(0, 0), (1, 0), (1, 1)})
 
     def test_partial_fit_unseen_category_raises(self):
-        # Categories are fixed at fit time; an unseen value has no index and
-        # partial_fit surfaces a ValueError rather than silently updating.
-        y = np.array([[0, 0], [0, 1]])
+        y = np.array([["a", "x"], ["a", "y"]])
         est = FrequencyEstimator().fit(np.zeros((2, 2)), y)
-        with self.assertRaises(ValueError):
-            est.partial_fit(np.zeros((1, 2)), np.array([[0, 9]]))
+        with self.assertRaises(ValueError) as ctx:
+            est.partial_fit(np.zeros((1, 2)), np.array([["b", "x"]]))
+
+        message = str(ctx.exception)
+        self.assertIn("FrequencyEstimator", message)
+        self.assertIn("'b'", message)
+        self.assertIn("column 0", message)
+        self.assertIn("categories seen during fit", message)
+        self.assertNotIn("is not in list", message)
 
 
 class TestFrequencyEstimatorPredict(unittest.TestCase):
@@ -272,6 +278,31 @@ class TestEstimatorScore(unittest.TestCase):
                 with self.subTest(estimator=cls.__name__, shape=invalid_y.shape):
                     with self.assertRaisesRegex(ValueError, "non-empty 2D path target"):
                         est.score(X, invalid_y)
+
+
+class TestEstimatorFittedState(unittest.TestCase):
+    """predict and score report an estimator that has not been fitted."""
+
+    ESTIMATORS = (FrequencyEstimator, MixedModeEstimator)
+
+    def test_unfitted_predict_raises_not_fitted_error(self):
+        X = np.zeros((1, 1))
+        for cls in self.ESTIMATORS:
+            with self.subTest(estimator=cls.__name__):
+                with self.assertRaises(NotFittedError) as ctx:
+                    cls().predict(X)
+                self.assertIn(cls.__name__, str(ctx.exception))
+                self.assertIn("fit", str(ctx.exception))
+
+    def test_unfitted_score_raises_not_fitted_error(self):
+        X = np.zeros((1, 1))
+        y = np.array([["start", "end"]])
+        for cls in self.ESTIMATORS:
+            with self.subTest(estimator=cls.__name__):
+                with self.assertRaises(NotFittedError) as ctx:
+                    cls().score(X, y)
+                self.assertIn(cls.__name__, str(ctx.exception))
+                self.assertIn("fit", str(ctx.exception))
 
 
 class TestCategoryOrderDeterminism(unittest.TestCase):
