@@ -184,12 +184,19 @@ class Graph:
         :return:
         """
 
+        A = np.asarray(A)
+        if A.ndim != 2 or A.shape[0] != A.shape[1]:
+            raise ValueError("Adjacency matrix must be a two-dimensional square array")
+        if not np.issubdtype(A.dtype, np.number) or np.issubdtype(A.dtype, np.complexfloating):
+            raise ValueError("Adjacency matrix entries must be real numeric values")
+        if np.any(np.isinf(A)):
+            raise ValueError("Adjacency matrix entries must be finite or NaN")
+        if np.any(A < 0):
+            raise ValueError("Adjacency matrix entries must be non-negative")
+
         if labels is None:
             labels = [(1, 1) for _ in range(A.shape[0])]
             labels[0] = (0, 0)
-
-        if A.shape[0] != A.shape[1]:
-            raise ValueError("Adjanceny Matrix must be square")
 
         dict_spec = {}
         for c_idx in range(A.shape[1]):

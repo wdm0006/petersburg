@@ -143,6 +143,21 @@ class TestFrequencyEstimatorPredict(unittest.TestCase):
         self.assertEqual(y_hat.shape, (3, 1))
         self.assertTrue((y_hat == 0).all())
 
+    def test_predict_builds_graph_from_non_negative_count_matrix(self):
+        y = np.array([[0, 0], [0, 0], [0, 1]])
+        X = np.zeros((3, 2))
+        est = FrequencyEstimator(num_simulations=1).fit(X, y)
+
+        original = pg.Graph.from_adj_matrix
+        with mock.patch.object(pg.Graph, "from_adj_matrix", autospec=True) as build:
+            build.side_effect = original
+            predictions = est.predict(X)
+
+        build.assert_called_once()
+        matrix = build.call_args.args[1]
+        self.assertTrue((matrix >= 0).all())
+        self.assertTrue(set(predictions.ravel()).issubset({0, 1}))
+
     def test_predict_output_shape_and_valid_labels(self):
         # A branching graph: predictions must be labels of terminal categories.
         y = np.array([[0, 0], [0, 0], [0, 1], [0, 1]])
