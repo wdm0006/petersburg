@@ -2,6 +2,7 @@ from collections import Counter
 
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.exceptions import NotFittedError
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
@@ -57,6 +58,28 @@ def _terminal_accuracy(estimator, X, y, sample_weight=None):
     return accuracy_score(y[:, -1], estimator.predict(X).ravel(), sample_weight=sample_weight)
 
 
+def _require_fitted(estimator):
+    """Raise when an estimator has not learned its categories and frequencies."""
+
+    if estimator._categories is None or estimator._frequency_matrix is None:
+        raise NotFittedError(
+            f"{estimator.__class__.__name__} is not fitted. Call fit before predict or score."
+        )
+
+
+def _partial_fit_category_index(estimator, column, value):
+    """Return a fitted category index or explain why an incremental update is invalid."""
+
+    try:
+        return estimator._categories.index((column, value))
+    except ValueError:
+        raise ValueError(
+            f"{estimator.__class__.__name__}.partial_fit received unknown category {value!r} "
+            f"in column {column}; partial_fit can only update counts for categories seen "
+            f"during fit."
+        ) from None
+
+
 class FrequencyEstimator(BaseEstimator, ClassifierMixin):
     """
     Predicts a terminal category by simulating a graph built from observed transition frequencies.
@@ -106,11 +129,7 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
                 f = self._categories.index((fcidx, y[ridx, fcidx]))
                 t = self._categories.index((tcidx, y[ridx, tcidx]))
 
-                try:
-                    self._frequency_matrix[f, t] += 1
-                except IndexError:
-                    if self.verbose:
-                        print("Unknown instance found")
+                self._frequency_matrix[f, t] += 1
 
         return self
 
@@ -129,14 +148,10 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
 
         for ridx in range(y.shape[0]):
             for fcidx, tcidx in zip(range(0, y.shape[1] - 1), range(1, y.shape[1])):
-                f = self._categories.index((fcidx, y[ridx, fcidx]))
-                t = self._categories.index((tcidx, y[ridx, tcidx]))
+                f = _partial_fit_category_index(self, fcidx, y[ridx, fcidx])
+                t = _partial_fit_category_index(self, tcidx, y[ridx, tcidx])
 
-                try:
-                    self._frequency_matrix[f, t] += 1
-                except IndexError:
-                    if self.verbose:
-                        print("Unknown instance found")
+                self._frequency_matrix[f, t] += 1
 
         return self
 
@@ -151,6 +166,8 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
         :param y:
         :return:
         """
+
+        _require_fitted(self)
 
         g = pg.Graph(random_state=self.random_state)
 
@@ -256,11 +273,7 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
                 f = self._categories.index((fcidx, y[ridx, fcidx]))
                 t = self._categories.index((tcidx, y[ridx, tcidx]))
 
-                try:
-                    self._frequency_matrix[f, t] += 1
-                except IndexError:
-                    if self.verbose:
-                        print("Unknown instance found")
+                self._frequency_matrix[f, t] += 1
 
         return True
 
@@ -326,6 +339,8 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
         :param y:
         :return:
         """
+
+        _require_fitted(self)
 
         g = pg.Graph(random_state=self.random_state)
 
