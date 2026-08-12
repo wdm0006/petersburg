@@ -65,8 +65,6 @@ jobs:
     # the scripts listed below and nothing else. Deliberately not covered:
     #   * examples/stpetersburg_w_bankroll.py - simulates 10,000,000 games, far
     #     too slow to run on every push.
-    #   * examples/estimation/ and examples/case_studies/ - out of scope here;
-    #     these are still only linted, never run.
     # examples/print.py IS covered, but its g.plot() call needs a system Graphviz
     # that this runner does not install. The script catches that failure itself
     # and exits 0, so this job checks all of it except the actual image render.
@@ -103,6 +101,8 @@ jobs:
           examples/costwise_gradient.py \
           examples/decision_vs_research.py \
           examples/distribution_nodes_demo.py \
+          examples/estimation/estimator_example.py \
+          examples/estimation/multimode_estimation.py \
           examples/necktie_paradox.py \
           examples/outsourcing.py \
           examples/print.py \
@@ -112,6 +112,20 @@ jobs:
         do
           echo "::group::$script"
           python "$script"
+          echo "::endgroup::"
+        done
+
+        for script in \
+          examples/case_studies/drug_development/analyze.py \
+          examples/case_studies/litigation_strategy/analyze.py \
+          examples/case_studies/product_launch/analyze.py \
+          examples/case_studies/startup_funding/analyze.py
+        do
+          echo "::group::$script"
+          (
+            cd "$(dirname "$script")"
+            python "$(basename "$script")"
+          )
           echo "::endgroup::"
         done
 
