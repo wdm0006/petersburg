@@ -408,6 +408,78 @@ class TestGetOptions(unittest.TestCase):
         )
 
 
+class TestGetOptionsStartPayoff(unittest.TestCase):
+    """get_options values include the start node's own payoff, like get_outcome does."""
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _fixed_start_payoff_graph(self):
+        # Single option: start payoff 5, child payoff 10, initial edge cost 2 -> 13.
+        g = Graph()
+        g.from_dict(
+            {
+                1: {"payoff": 5, "after": []},
+                2: {"payoff": 10, "after": [{"node_id": 1, "cost": 2}]},
+            }
+        )
+        return g
+
+    def test_fixed_start_payoff_matches_full_walk(self):
+        g = self._fixed_start_payoff_graph()
+        self.assertEqual(g.get_outcome(), 13)
+        self.assertEqual(g.get_options(iters=1), {2: 13.0})
+
+    def test_extended_stats_include_start_payoff(self):
+        g = self._fixed_start_payoff_graph()
+        options = g.get_options(iters=4, extended_stats=True)
+        self.assertEqual(options, {2: {"mean": 13.0, "max": 13, "min": 13, "count": 4}})
+
+    def _uniform_start_graph(self, random_state):
+        g = Graph(random_state=random_state)
+        g.from_dict(
+            {
+                1: {"type": "uniform", "min_payoff": 0, "max_payoff": 10, "after": []},
+                2: {"payoff": 10, "after": [{"node_id": 1, "cost": 2}]},
+            }
+        )
+        return g
+
+    def test_stochastic_start_payoff_is_sampled_once_per_iteration(self):
+        g = self._uniform_start_graph(random_state=7)
+        samples = []
+        start_sample_payoff = g.start_node.sample_payoff
+
+        def recording_sample_payoff():
+            value = start_sample_payoff()
+            samples.append(value)
+            return value
+
+        g.start_node.sample_payoff = recording_sample_payoff
+        options = g.get_options(iters=20, extended_stats=True)
+
+        self.assertEqual(len(samples), 20)
+        self.assertEqual(options[2]["count"], 20)
+        # Each option value is that iteration's start payoff plus the deterministic 10 - 2.
+        self.assertAlmostEqual(options[2]["mean"], float(sum(samples)) / len(samples) + 8)
+        self.assertAlmostEqual(options[2]["max"], max(samples) + 8)
+        self.assertAlmostEqual(options[2]["min"], min(samples) + 8)
+        self.assertGreater(options[2]["max"], options[2]["min"])
+
+    def test_seeded_stochastic_start_payoff_is_reproducible(self):
+        first = self._uniform_start_graph(random_state=11)
+        second = self._uniform_start_graph(random_state=11)
+        self.assertEqual(first.get_options(iters=25), second.get_options(iters=25))
+        self.assertEqual(
+            first.get_options(iters=25, extended_stats=True),
+            second.get_options(iters=25, extended_stats=True),
+        )
+        # A different seed draws different start payoffs, so the option value moves with them.
+        other = self._uniform_start_graph(random_state=12)
+        self.assertNotEqual(first.get_options(iters=25), other.get_options(iters=25))
+
+
 class TestFromAdjMatrix(unittest.TestCase):
     """Construction from a numpy adjacency matrix."""
 
