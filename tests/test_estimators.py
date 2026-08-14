@@ -397,6 +397,16 @@ class TestEstimatorPathTargetValidation(unittest.TestCase):
                 est = cls(num_simulations=1).fit(X, y)
                 self.assertEqual(_terminal_labels(est._categories), {"approved", "rejected"})
 
+    def test_mixed_mode_trains_classifiers_from_a_list_target(self):
+        # The converted target has to reach the classifier-training filter too, which is the
+        # only part of MixedModeEstimator.fit that indexes y outside _update_frequencies.
+        X, y = _classifier_training_data()
+
+        est = MixedModeEstimator(num_simulations=1).fit(X, y.tolist())
+
+        trained = [clf for row in est._clf_matrix for clf in row if clf is not None]
+        self.assertTrue(trained)
+
 
 class TestEstimatorFittedState(unittest.TestCase):
     """predict and score report an estimator that has not been fitted."""

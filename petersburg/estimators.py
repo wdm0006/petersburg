@@ -300,8 +300,6 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
         return clf_args
 
     def _update_frequencies(self, y):
-        y = _validate_path_target(self, y)
-
         # set up the categories corresponding to each index
         self._categories = _build_categories(y)
 
