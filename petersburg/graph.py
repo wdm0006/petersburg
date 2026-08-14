@@ -8,6 +8,8 @@
 
 """
 
+import re
+
 import numpy as np
 
 from petersburg.nodes import (
@@ -406,24 +408,35 @@ class Graph:
             key=self._stable_edge_sort_key,
         )
 
-        # Create node ID to display mapping
-        node_to_id = {node: node.node_id for node in nodes}
+        # Create safe, unique Mermaid identifiers in stable node order
+        node_to_id = {}
+        used_ids = set()
+        for node in nodes:
+            base_id = "node_" + re.sub(r"[^A-Za-z0-9_]", "_", str(node.node_id))
+            node_id = base_id
+            suffix = 2
+            while node_id in used_ids:
+                node_id = f"{base_id}_{suffix}"
+                suffix += 1
+            node_to_id[node] = node_id
+            used_ids.add(node_id)
 
         # Add node definitions with payoffs
         for node in nodes:
             node_id = node_to_id[node]
+            display_id = str(node.node_id).replace('"', "&quot;")
 
             # Check if this is the start node
             if node == self.start_node:
-                lines.append(f"    {node_id}((Start))")
+                lines.append(f'    {node_id}(("Start: {display_id}"))')
             elif node.payoff != 0:
-                label = f"Node {node_id}<br/>Payoff: ${node.payoff}"
+                label = f"Node {display_id}<br/>Payoff: ${node.payoff}"
                 lines.append(f'    {node_id}["{label}"]')
             elif len(node.outcomes) == 0:
                 # Terminal/leaf node
-                lines.append(f"    {node_id}[End]")
+                lines.append(f'    {node_id}["End: {display_id}"]')
             else:
-                lines.append(f"    {node_id}[Node {node_id}]")
+                lines.append(f'    {node_id}["Node {display_id}"]')
 
         # Add edges with costs and weights
         for edge in edges:
