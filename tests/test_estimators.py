@@ -295,6 +295,109 @@ class TestEstimatorScore(unittest.TestCase):
                         est.score(X, invalid_y)
 
 
+class TestEstimatorPathTargetValidation(unittest.TestCase):
+    """fit and partial_fit reject targets that cannot encode a layer-to-layer transition."""
+
+    ESTIMATORS = (FrequencyEstimator, MixedModeEstimator)
+
+    # (case name, malformed target, expected message fragment)
+    MALFORMED = (
+        ("one_dimensional", np.array(["approved", "rejected", "approved"]), "2D path target"),
+        ("zero_rows", np.empty((0, 2), dtype=object), "no rows"),
+        ("zero_columns", np.empty((3, 0), dtype=object), "at least two decision layers"),
+        (
+            "single_column",
+            np.array([["apply"], ["apply"], ["decline"]]),
+            "at least two decision layers",
+        ),
+    )
+
+    def _valid_data(self):
+        X = np.zeros((3, 1))
+        y = np.array([["apply", "approved"], ["apply", "rejected"], ["apply", "approved"]])
+        return X, y
+
+    def test_fit_rejects_malformed_path_targets(self):
+        X = np.zeros((3, 1))
+
+        for cls in self.ESTIMATORS:
+            for case, bad_y, fragment in self.MALFORMED:
+                with self.subTest(estimator=cls.__name__, case=case):
+                    with self.assertRaises(ValueError) as ctx:
+                        cls(num_simulations=1).fit(X, bad_y)
+
+                    message = str(ctx.exception)
+                    self.assertIn(cls.__name__, message)
+                    self.assertIn(fragment, message)
+
+    def test_partial_fit_rejects_malformed_path_targets_before_and_after_fit(self):
+        X, y = self._valid_data()
+
+        for case, bad_y, fragment in self.MALFORMED:
+            # Before any fit, partial_fit would otherwise delegate straight to fit.
+            with self.subTest(case=case, fitted=False):
+                with self.assertRaises(ValueError) as ctx:
+                    FrequencyEstimator(num_simulations=1).partial_fit(X, bad_y)
+                self.assertIn("FrequencyEstimator", str(ctx.exception))
+                self.assertIn(fragment, str(ctx.exception))
+
+            with self.subTest(case=case, fitted=True):
+                est = FrequencyEstimator(num_simulations=1).fit(X, y)
+                with self.assertRaises(ValueError) as ctx:
+                    est.partial_fit(X, bad_y)
+                self.assertIn(fragment, str(ctx.exception))
+
+    def test_rejected_training_input_leaves_fitted_state_unchanged(self):
+        X, y = self._valid_data()
+
+        for cls in self.ESTIMATORS:
+            with self.subTest(estimator=cls.__name__):
+                est = cls(num_simulations=1).fit(X, y)
+                categories = list(est._categories)
+                frequencies = est._frequency_matrix.copy()
+                clf_matrix = None if cls is FrequencyEstimator else list(est._clf_matrix)
+
+                for _, bad_y, _ in self.MALFORMED:
+                    with self.assertRaises(ValueError):
+                        est.fit(X, bad_y)
+                    if cls is FrequencyEstimator:
+                        with self.assertRaises(ValueError):
+                            est.partial_fit(X, bad_y)
+
+                self.assertEqual(est._categories, categories)
+                self.assertTrue(np.array_equal(est._frequency_matrix, frequencies))
+                if clf_matrix is not None:
+                    self.assertEqual(est._clf_matrix, clf_matrix)
+
+                # The still-fitted model keeps predicting its terminal labels.
+                predicted = set(est.predict(X).ravel().tolist())
+                self.assertTrue(predicted <= _terminal_labels(est._categories))
+                self.assertTrue(predicted)
+
+    def test_ordinary_two_layer_target_fits_and_predicts_terminal_labels(self):
+        X, y = self._valid_data()
+        terminals = {"approved", "rejected"}
+
+        for cls in self.ESTIMATORS:
+            with self.subTest(estimator=cls.__name__):
+                est = cls(num_simulations=5).fit(X, y)
+
+                self.assertEqual(_terminal_labels(est._categories), terminals)
+
+                y_hat = est.predict(X)
+                self.assertEqual(y_hat.shape, (3, 1))
+                self.assertTrue(set(y_hat.ravel().tolist()) <= terminals)
+
+    def test_list_of_lists_target_is_accepted(self):
+        X = np.zeros((3, 1))
+        y = [["apply", "approved"], ["apply", "rejected"], ["apply", "approved"]]
+
+        for cls in self.ESTIMATORS:
+            with self.subTest(estimator=cls.__name__):
+                est = cls(num_simulations=1).fit(X, y)
+                self.assertEqual(_terminal_labels(est._categories), {"approved", "rejected"})
+
+
 class TestEstimatorFittedState(unittest.TestCase):
     """predict and score report an estimator that has not been fitted."""
 
