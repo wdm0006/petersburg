@@ -708,11 +708,11 @@ class TestToMermaid(unittest.TestCase):
         self.assertTrue(mermaid.startswith("graph "))
 
         # Start node rendered with the (()) shape.
-        self.assertIn("1((Start))", mermaid)
+        self.assertIn('node_1(("Start: 1"))', mermaid)
         # Payoff node carries its payoff in the label.
         self.assertIn("Payoff: $50", mermaid)
         # Edge with a non-zero cost is labelled and points 1 -> 2.
-        self.assertIn("1 -->|Cost: $10| 2", mermaid)
+        self.assertIn("node_1 -->|Cost: $10| node_2", mermaid)
 
     def test_mermaid_orientation_argument(self):
         g = Graph()
@@ -734,11 +734,11 @@ class TestToMermaid(unittest.TestCase):
         )
         mermaid = g.to_mermaid()
 
-        self.assertIn("    class 2 terminal", mermaid)
+        self.assertIn("    class node_2 terminal", mermaid)
         # Node 0 does not exist here, so it must not be styled.
-        self.assertNotIn("class 0 terminal", mermaid)
+        self.assertNotIn("class node_0 terminal", mermaid)
         # The start node still has outgoing outcomes.
-        self.assertNotIn("class 1 terminal", mermaid)
+        self.assertNotIn("class node_1 terminal", mermaid)
 
     def test_mermaid_styles_every_terminal_node(self):
         g = Graph()
@@ -754,9 +754,9 @@ class TestToMermaid(unittest.TestCase):
         mermaid = g.to_mermaid()
 
         for terminal_id in (2, 3, 5):
-            self.assertIn(f"    class {terminal_id} terminal", mermaid)
+            self.assertIn(f"    class node_{terminal_id} terminal", mermaid)
         for interior_id in (1, 4):
-            self.assertNotIn(f"class {interior_id} terminal", mermaid)
+            self.assertNotIn(f"class node_{interior_id} terminal", mermaid)
 
     def test_mermaid_styles_node_zero_when_it_is_terminal(self):
         g = Graph()
@@ -768,7 +768,38 @@ class TestToMermaid(unittest.TestCase):
         )
         mermaid = g.to_mermaid()
 
-        self.assertIn("    class 0 terminal", mermaid)
+        self.assertIn("    class node_0 terminal", mermaid)
+
+    def test_mermaid_sanitizes_ids_and_preserves_display_labels(self):
+        node_ids = ["Settle at mediation", "Exit $5B", "Node(A)", 'say "hi"', "end"]
+        spec = {"Start Here": {"payoff": 0, "after": []}}
+        for node_id in node_ids:
+            spec[node_id] = {"payoff": 1, "after": [{"node_id": "Start Here"}]}
+
+        mermaid = Graph().from_dict(spec).to_mermaid()
+        emitted_ids = _mermaid_node_ids(mermaid)
+
+        self.assertEqual(len(emitted_ids), len(node_ids) + 1)
+        self.assertTrue(all(re.fullmatch(r"[A-Za-z0-9_]+", node_id) for node_id in emitted_ids))
+        for node_id in ["Start Here", *node_ids[:-2], "end"]:
+            self.assertIn(node_id, mermaid)
+        self.assertIn("say &quot;hi&quot;", mermaid)
+
+    def test_mermaid_disambiguates_sanitized_id_collisions(self):
+        g = Graph().from_dict(
+            {
+                "start": {"payoff": 0, "after": []},
+                "a b": {"payoff": 0, "after": [{"node_id": "start"}]},
+                "a-b": {"payoff": 1, "after": [{"node_id": "a b"}]},
+            }
+        )
+
+        mermaid = g.to_mermaid()
+
+        self.assertIn('node_a_b["Node a b"]', mermaid)
+        self.assertIn('node_a_b_2["Node a-b<br/>Payoff: $1"]', mermaid)
+        self.assertIn("node_start --> node_a_b", mermaid)
+        self.assertIn("node_a_b --> node_a_b_2", mermaid)
 
 
 def _wide_spec(start_id=100, children=80):
@@ -831,7 +862,7 @@ class TestMermaidDeterminism(unittest.TestCase):
             outputs.add(proc.stdout)
 
         self.assertEqual(len(outputs), 1)
-        self.assertIn(f"{self.START_ID}((Start))", outputs.pop())
+        self.assertIn(f'node_{self.START_ID}(("Start: {self.START_ID}"))', outputs.pop())
 
     def test_export_ignores_traversal_iteration_order(self):
         g = self._wide_graph()
@@ -847,8 +878,9 @@ class TestMermaidDeterminism(unittest.TestCase):
     def test_node_order_is_start_first_then_sorted_by_id(self):
         ids = _mermaid_node_ids(self._wide_graph().to_mermaid(max_nodes=self.CHILDREN + 1))
 
-        self.assertEqual(ids[0], str(self.START_ID))
-        self.assertEqual(ids[1:], sorted(str(n) for n in range(self.CHILDREN)))
+        self.assertEqual(ids[0], f"node_{self.START_ID}")
+        expected = [f"node_{n}" for n in sorted(range(self.CHILDREN), key=str)]
+        self.assertEqual(ids[1:], expected)
 
     def test_truncation_keeps_start_node(self):
         g = self._wide_graph()
@@ -857,7 +889,7 @@ class TestMermaidDeterminism(unittest.TestCase):
         for max_nodes in (1, 2, 5, 10, 40, total, total + 5):
             with self.subTest(max_nodes=max_nodes):
                 ids = _mermaid_node_ids(g.to_mermaid(max_nodes=max_nodes))
-                self.assertEqual(ids[0], str(self.START_ID))
+                self.assertEqual(ids[0], f"node_{self.START_ID}")
                 self.assertEqual(len(ids), min(max_nodes, total))
 
     def test_truncated_edges_stay_within_the_selected_nodes(self):
