@@ -290,10 +290,39 @@ class Graph:
 
         return node_id
 
+    def _option_keys(self):
+        """
+        Result keys for :meth:`get_options`, one per outgoing edge of the start node in
+        ``start_node.outcomes`` order.
+
+        An edge whose destination no earlier edge reaches is keyed by that destination's
+        node id. The second and later edges to an already-seen destination are keyed by
+        ``(node_id, occurrence)`` instead, where ``occurrence`` counts from 1, so parallel
+        first options stay distinguishable.
+
+        :return: list of keys, positionally aligned with ``self.start_node.outcomes``
+        """
+
+        seen = {}
+        keys = []
+        for outcome in self.start_node.outcomes:
+            node_id = outcome[0].to_node.node_id
+            occurrence = seen.get(node_id, 0)
+            seen[node_id] = occurrence + 1
+            keys.append(node_id if occurrence == 0 else (node_id, occurrence))
+        return keys
+
     def get_options(self, iters=100, extended_stats=False, feature_vector=None):
         """
         Starts with each of the outcomes from the starting node seperately, to get the expected values (using iters
         iterations) for each of the initial options. Returns a dictionary of node_id: expected profit pairs.
+
+        There is exactly one entry per outgoing edge of the start node. An option is keyed by
+        its destination node id; when two or more of the start node's edges reach the SAME
+        destination, the second and later of them are keyed by ``(node_id, occurrence)``
+        instead — ``(2, 1)`` for the second edge to node ``2``, ``(2, 2)`` for the third, and
+        so on, in ``start_node.outcomes`` order. Graphs whose initial options all have
+        distinct destinations therefore keep plain node id keys.
 
         Each simulated option value includes one sample of the starting node's own payoff, so option
         values are on the same scale as :meth:`get_outcome`.
@@ -306,17 +335,17 @@ class Graph:
         """
 
         choice = {}
-        for outcome in self.start_node.outcomes:
+        for key, outcome in zip(self._option_keys(), self.start_node.outcomes):
             out = []
             for _ in range(iters):
                 payoff, cost = outcome[0].get_outcome(feature_vector=feature_vector)
                 out.append(payoff + self.start_node.sample_payoff() - cost - outcome[0].cost)
             if not extended_stats:
-                choice.update({outcome[0].to_node.node_id: float(sum(out)) / len(out)})
+                choice.update({key: float(sum(out)) / len(out)})
             else:
                 choice.update(
                     {
-                        outcome[0].to_node.node_id: {
+                        key: {
                             "mean": float(sum(out)) / len(out),
                             "max": max(out),
                             "min": min(out),

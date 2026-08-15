@@ -409,6 +409,84 @@ class TestGetOptions(unittest.TestCase):
         )
 
 
+class TestGetOptionsParallelOptions(unittest.TestCase):
+    """Two start-node edges to one destination stay separate options."""
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _parallel_option_graph(self):
+        # Start node 1 reaches node 2 twice: a cheap route (EV 90) and a costly one (EV 20).
+        g = Graph(random_state=3)
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {
+                    "payoff": 100,
+                    "after": [
+                        {"node_id": 1, "cost": 10, "weight": 1},
+                        {"node_id": 1, "cost": 80, "weight": 1},
+                    ],
+                },
+            }
+        )
+        return g
+
+    def test_parallel_options_are_not_collapsed(self):
+        g = self._parallel_option_graph()
+        options = g.get_options(iters=50)
+        self.assertEqual(len(options), 2)
+        self.assertEqual(options, {2: 90.0, (2, 1): 20.0})
+
+    def test_extended_stats_match_the_plain_form(self):
+        g = self._parallel_option_graph()
+        options = g.get_options(iters=50, extended_stats=True)
+        self.assertEqual(len(options), 2)
+        self.assertEqual(set(options.keys()), {2, (2, 1)})
+        self.assertEqual(options[2]["mean"], 90.0)
+        self.assertEqual(options[(2, 1)]["mean"], 20.0)
+        self.assertEqual(
+            {key: stats["mean"] for key, stats in options.items()},
+            g.get_options(iters=50),
+        )
+
+    def test_three_parallel_options_are_numbered_in_outcome_order(self):
+        g = Graph(random_state=3)
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {
+                    "payoff": 100,
+                    "after": [
+                        {"node_id": 1, "cost": 10},
+                        {"node_id": 1, "cost": 40},
+                        {"node_id": 1, "cost": 80},
+                    ],
+                },
+            }
+        )
+        self.assertEqual(g.get_options(iters=10), {2: 90.0, (2, 1): 60.0, (2, 2): 20.0})
+
+    def test_distinct_destinations_keep_plain_node_id_keys(self):
+        g = Graph(random_state=3)
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 100, "after": [{"node_id": 1, "cost": 5}]},
+                3: {"payoff": 20, "after": [{"node_id": 1, "cost": 0}]},
+            }
+        )
+        self.assertEqual(g.get_options(iters=10), {2: 95.0, 3: 20.0})
+        self.assertEqual(
+            g.get_options(iters=10, extended_stats=True),
+            {
+                2: {"mean": 95.0, "max": 95, "min": 95, "count": 10},
+                3: {"mean": 20.0, "max": 20, "min": 20, "count": 10},
+            },
+        )
+
+
 class TestGetOptionsStartPayoff(unittest.TestCase):
     """get_options values include the start node's own payoff, like get_outcome does."""
 
