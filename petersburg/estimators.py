@@ -11,6 +11,41 @@ from petersburg import graph as pg
 __author__ = "willmcginnis"
 
 
+def _validate_path_target(estimator, y):
+    """
+    Coerces a training target to an array and rejects shapes that cannot encode a transition.
+
+    A path target has one column per decision layer, so at least two columns are needed for a
+    single layer-to-layer transition to exist. Checking here keeps the failure at the training
+    entry point instead of surfacing it as an opaque shape error during fit, or as a synthetic
+    root error once ``predict`` simulates an unusable graph.
+
+    :param estimator: the estimator being trained, named in the error message
+    :param y: array-like path target, one column per layer
+    :return: the target as a ``numpy`` array
+    """
+
+    y = np.asarray(y)
+    name = estimator.__class__.__name__
+
+    if y.ndim != 2:
+        raise ValueError(
+            f"{name} requires a 2D path target with one column per decision layer, "
+            f"but y has {y.ndim} dimension(s)."
+        )
+
+    if y.shape[0] == 0:
+        raise ValueError(f"{name} requires at least one training path, but y has no rows.")
+
+    if y.shape[1] < 2:
+        raise ValueError(
+            f"{name} requires a path target with at least two decision layers, but y has "
+            f"{y.shape[1]} column(s); no layer-to-layer transition can be observed."
+        )
+
+    return y
+
+
 def _build_categories(y):
     """
     Builds the ordered ``(layer, value)`` category list for a multi-column y.
@@ -117,6 +152,8 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
         :return:
         """
 
+        y = _validate_path_target(self, y)
+
         # set up the categories corresponding to each index
         self._categories = _build_categories(y)
 
@@ -139,6 +176,8 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
 
         :return:
         """
+
+        y = _validate_path_target(self, y)
 
         if self._categories is None:
             if self.verbose:
@@ -283,6 +322,8 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
         :param y:
         :return:
         """
+
+        y = _validate_path_target(self, y)
 
         # first update the frequencies
         self._update_frequencies(y)
