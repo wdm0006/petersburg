@@ -621,7 +621,9 @@ class Graph:
         Candidate parameters are ordered deterministically (by node id, then edge cost)
         before ``max_params`` is applied, so repeated runs on the same graph analyze the
         same parameters. The return value reports both how many candidates were eligible
-        and how many were actually analyzed.
+        and how many were actually analyzed. Edge-weight candidates must have a nonzero
+        numeric weight and more than one outcome from their source node; scaling the sole
+        outgoing weight cannot change its transition probability.
 
         :param parameter_type: Type of parameter to analyze ('edge_weights', 'costs', or 'payoffs')
         :param num_simulations: Number of Monte Carlo simulations per parameter value
@@ -654,7 +656,7 @@ class Graph:
             candidates = []
             for edge in sorted(self.edge_list(), key=self._edge_sort_key):
                 found = self._numeric_weight(edge)
-                if found is not None and found[1] != 0:
+                if found is not None and found[1] != 0 and len(edge.from_node.outcomes) > 1:
                     candidates.append((edge, found[0], found[1]))
             candidate_count = len(candidates)
 
