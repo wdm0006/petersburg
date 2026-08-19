@@ -572,3 +572,77 @@ class TestEstimatorReproducibility(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEstimatorSimulationCountValidation(unittest.TestCase):
+    """A fitted estimator rejects a non-positive num_simulations before it simulates."""
+
+    NON_POSITIVE = (0, -1, -50)
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+        self.X = np.array([[1.0], [2.0], [3.0]])
+        self.y = np.array([["apply", "win"], ["apply", "lose"], ["apply", "win"]])
+
+    def _fitted(self, cls, num_simulations):
+        return cls(num_simulations=num_simulations).fit(self.X, self.y)
+
+    def test_non_positive_num_simulations_is_rejected(self):
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            for num_simulations in self.NON_POSITIVE:
+                estimator = self._fitted(cls, num_simulations)
+
+                with self.assertRaises(ValueError) as ctx:
+                    estimator.predict(self.X)
+
+                message = str(ctx.exception)
+                self.assertIn("num_simulations", message)
+                self.assertIn(repr(num_simulations), message)
+
+    def test_rejection_precedes_graph_construction(self):
+        # Without the guard, predict builds the simulation graph and only fails later, at
+        # most_common(1)[0] on an empty Counter.
+        def unexpected_from_adj_matrix(*args, **kwargs):
+            raise AssertionError("a graph was built before num_simulations was validated")
+
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            estimator = self._fitted(cls, 0)
+
+            with mock.patch.object(pg.Graph, "from_adj_matrix", unexpected_from_adj_matrix):
+                with self.assertRaises(ValueError):
+                    estimator.predict(self.X)
+
+    def test_unfitted_estimator_still_reports_the_fitted_state_first(self):
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            with self.assertRaises(NotFittedError):
+                cls(num_simulations=0).predict(self.X)
+
+    def test_score_inherits_the_rule(self):
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            estimator = self._fitted(cls, 0)
+
+            with self.assertRaises(ValueError) as ctx:
+                estimator.score(self.X, self.y)
+
+            self.assertIn("num_simulations", str(ctx.exception))
+
+    def test_non_integer_num_simulations_is_rejected(self):
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            for num_simulations in (10.5, 5.0, "10", None):
+                estimator = self._fitted(cls, num_simulations)
+
+                with self.assertRaises(ValueError) as ctx:
+                    estimator.predict(self.X)
+
+                self.assertIn("num_simulations", str(ctx.exception))
+
+    def test_positive_num_simulations_is_unchanged(self):
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            estimator = self._fitted(cls, 5)
+
+            predictions = estimator.predict(self.X)
+
+            self.assertEqual(predictions.shape, (3, 1))
+            self.assertEqual(predictions.dtype, object)
+            self.assertTrue(set(predictions.ravel().tolist()) <= {"win", "lose"})

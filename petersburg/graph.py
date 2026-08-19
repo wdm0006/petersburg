@@ -8,6 +8,7 @@
 
 """
 
+import numbers
 import re
 
 import numpy as np
@@ -25,6 +26,23 @@ __author__ = "willmcginnis"
 
 SENSITIVITY_PARAMETER_TYPES = ("edge_weights", "costs", "payoffs")
 NODE_TYPES = ("fixed", "uniform", "gaussian", "lognormal", "powerlaw")
+
+
+def validate_sample_count(name, value):
+    """
+    Reject a sample-count argument that cannot produce a sample.
+
+    Every API that averages over simulated walks needs at least one of them; a zero or
+    negative count otherwise reaches aggregation with nothing to aggregate and fails there,
+    or produces a ``NaN`` report that looks successful.
+
+    :param name: Argument name, used in the error message
+    :param value: Requested number of samples
+    :raises ValueError: If value is not a positive integer
+    """
+
+    if not isinstance(value, numbers.Integral) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer, got {value!r}")
 
 
 class Graph:
@@ -333,8 +351,11 @@ class Graph:
         :param extended_stats:
         :param feature_vector: Features passed to classifier-weighted edges. Required when
             the graph uses classifiers for edge weights.
+        :raises ValueError: If iters is not a positive integer
         :return:
         """
+
+        validate_sample_count("iters", iters)
 
         choice = {}
         for key, outcome in zip(self._option_keys(), self.start_node.outcomes):
@@ -634,6 +655,7 @@ class Graph:
         :return: Dictionary with sensitivity results sorted by impact
         :raises ValueError: If parameter_type is not one of 'edge_weights', 'costs', or 'payoffs'
         :raises ValueError: If perturbation is not strictly between 0 and 1
+        :raises ValueError: If num_simulations is not a positive integer
         """
         import numpy as np
 
@@ -642,6 +664,7 @@ class Graph:
             raise ValueError(f"parameter_type must be one of {accepted}, got {parameter_type!r}")
 
         self._validate_perturbation(perturbation)
+        validate_sample_count("num_simulations", num_simulations)
 
         # Get baseline expected value, unless the caller already has one
         if baseline_ev is None:
@@ -815,8 +838,10 @@ class Graph:
             or None for no limit
         :return: Dictionary with analysis summary and top parameters
         :raises ValueError: If perturbation is not strictly between 0 and 1
+        :raises ValueError: If num_simulations is not a positive integer
         """
         self._validate_perturbation(perturbation)
+        validate_sample_count("num_simulations", num_simulations)
         baseline_ev = self._baseline_expected_value(num_simulations)
 
         all_results = []
