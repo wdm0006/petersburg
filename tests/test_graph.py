@@ -1152,6 +1152,40 @@ class TestSensitivityParameterSelection(unittest.TestCase):
             parameter_type=parameter_type, num_simulations=1, perturbation=0.1, **kwargs
         )
 
+    def _mixed_path_graph(self):
+        """Two single-outcome steps leading to one genuine two-way branch."""
+        return Graph(random_state=7).from_dict(
+            {
+                0: {"payoff": 1, "after": []},
+                1: {"payoff": 2, "after": [{"node_id": 0, "cost": 1, "weight": 1}]},
+                2: {"payoff": 3, "after": [{"node_id": 1, "cost": 2, "weight": 2}]},
+                3: {"payoff": 30, "after": [{"node_id": 2, "cost": 3, "weight": 3}]},
+                4: {"payoff": 40, "after": [{"node_id": 2, "cost": 4, "weight": 4}]},
+            }
+        )
+
+    def test_sole_outgoing_weights_are_not_candidates(self):
+        graph = self._mixed_path_graph()
+
+        weights = self._analyze(graph, "edge_weights", max_params=None)
+        self.assertEqual(
+            sorted(r["parameter"] for r in weights["results"]),
+            ["Edge 2→3 weight", "Edge 2→4 weight"],
+        )
+        self.assertEqual(weights["candidate_parameters"], 2)
+
+        # Eligibility for the other parameter types is unchanged on the same graph.
+        self.assertEqual(self._analyze(graph, "costs", max_params=None)["candidate_parameters"], 4)
+        self.assertEqual(
+            self._analyze(graph, "payoffs", max_params=None)["candidate_parameters"], 5
+        )
+
+    def test_sole_outgoing_exclusion_frees_max_params_budget(self):
+        result = self._analyze(self._mixed_path_graph(), "edge_weights", max_params=1)
+
+        self.assertEqual(result["parameters_analyzed"], 1)
+        self.assertEqual([r["parameter"] for r in result["results"]], ["Edge 2→3 weight"])
+
     def test_edge_weight_selection_is_deterministic(self):
         # Candidates are sorted by (str(from_id), str(to_id), str(cost)), so the ten
         # analyzed edges are the same on every run and in every process.
@@ -1353,8 +1387,8 @@ class TestElasticitySign(unittest.TestCase):
         result = self._analyze_all(self._chain_graph(100, 5, 10))
 
         self.assertAlmostEqual(result["baseline_ev"], -95.0)
-        self.assertEqual(result["total_parameters_analyzed"], 5)
-        self.assertEqual(len(result["top_parameters"]), 5)
+        self.assertEqual(result["total_parameters_analyzed"], 3)
+        self.assertEqual(len(result["top_parameters"]), 3)
         for param in result["top_parameters"]:
             self.assertGreaterEqual(param["elasticity"], 0, param["parameter"])
 
@@ -1372,10 +1406,10 @@ class TestElasticitySign(unittest.TestCase):
         for param in (cost, payoff):
             self.assertAlmostEqual(param["elasticity"], param["sensitivity"] / abs(baseline_ev))
 
-    def test_zero_baseline_yields_zero_elasticity_for_every_type(self):
+    def test_zero_baseline_yields_zero_elasticity_for_eligible_types(self):
         graph = self._chain_graph(10, 0, 10)
 
-        for parameter_type in ("edge_weights", "costs", "payoffs"):
+        for parameter_type in ("costs", "payoffs"):
             analysis = graph.analyze_sensitivity(
                 parameter_type=parameter_type, num_simulations=1, perturbation=0.1
             )
@@ -1465,6 +1499,30 @@ class TestSensitivityBaselineReuse(unittest.TestCase):
         self.assertEqual(len(calls), 4 + 2 * 2 * 4)
         for param in analysis["results"]:
             self.assertEqual(param["baseline_ev"], analysis["baseline_ev"])
+
+    def test_inert_edge_weights_do_not_consume_walks(self):
+        graph = Graph(random_state=7).from_dict(
+            {
+                0: {"payoff": 0, "after": []},
+                1: {"payoff": 0, "after": [{"node_id": 0, "weight": 1}]},
+                2: {"payoff": 20, "after": [{"node_id": 1, "weight": 3}]},
+                3: {"payoff": 40, "after": [{"node_id": 1, "weight": 1}]},
+            }
+        )
+        calls = self._count_walks(graph)
+        num_simulations = 4
+
+        analysis = graph.analyze_sensitivity(
+            parameter_type="edge_weights",
+            num_simulations=num_simulations,
+            max_params=None,
+        )
+
+        self.assertEqual(analysis["parameters_analyzed"], 2)
+        self.assertEqual(
+            len(calls),
+            num_simulations * (1 + 2 * analysis["parameters_analyzed"]),
+        )
 
     def test_every_top_parameter_shares_the_reported_baseline(self):
         # A single parameter type could not distinguish shared from per-type baselines,
