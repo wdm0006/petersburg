@@ -1360,6 +1360,112 @@ class TestEdgeWeightPerturbation(unittest.TestCase):
         self.assertEqual(result["parameters_analyzed"], 2)
 
 
+class _SimulationFailure(RuntimeError):
+    """Raised by a shadowed get_outcome to abort a perturbed sensitivity arm."""
+
+
+class TestSensitivityRestorationOnFailure(unittest.TestCase):
+    """A failed perturbed simulation still leaves the graph carrying original values."""
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _branching_graph(self):
+        """Start node 1 with two weighted, costed branches, so both arms have candidates."""
+        return Graph().from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 100, "after": [{"node_id": 1, "cost": 10, "weight": 2}]},
+                3: {"payoff": 50, "after": [{"node_id": 1, "cost": 5, "weight": 3}]},
+            }
+        )
+
+    def _weights(self, graph):
+        return [(edge.to_node.node_id, weight) for edge, weight in graph.start_node.outcomes]
+
+    def _costs(self, graph):
+        return sorted((edge.to_node.node_id, edge.cost) for edge in graph.edge_list())
+
+    def _fail_on_walk(self, graph, walk_index):
+        """Shadow get_outcome so the walk at walk_index raises, recording the live state."""
+        real_get_outcome = graph.get_outcome
+        state = {"calls": 0}
+
+        def failing_get_outcome(*args, **kwargs):
+            index = state["calls"]
+            state["calls"] += 1
+            if index == walk_index:
+                state["weights_at_failure"] = self._weights(graph)
+                state["costs_at_failure"] = self._costs(graph)
+                raise _SimulationFailure("simulated failure")
+            return real_get_outcome(*args, **kwargs)
+
+        graph.get_outcome = failing_get_outcome
+        return state
+
+    def _run_failing_analysis(self, parameter_type, walk_index):
+        """Run one sensitivity arm that raises, returning the graph and recorded state."""
+        graph = self._branching_graph()
+        state = self._fail_on_walk(graph, walk_index)
+
+        # baseline_ev is supplied so walk 0 is the first candidate's increase arm and
+        # walk 1 its decrease arm, with no baseline walks in between.
+        with self.assertRaises(_SimulationFailure):
+            graph.analyze_sensitivity(
+                parameter_type=parameter_type,
+                num_simulations=1,
+                perturbation=0.1,
+                baseline_ev=0.0,
+            )
+
+        return graph, state
+
+    def test_edge_weight_increase_failure_restores_weight(self):
+        original = self._weights(self._branching_graph())
+        graph, state = self._run_failing_analysis("edge_weights", walk_index=0)
+
+        self.assertNotEqual(state["weights_at_failure"], original)
+        self.assertEqual(self._weights(graph), original)
+
+    def test_edge_weight_decrease_failure_restores_weight(self):
+        original = self._weights(self._branching_graph())
+        graph, state = self._run_failing_analysis("edge_weights", walk_index=1)
+
+        self.assertNotEqual(state["weights_at_failure"], original)
+        self.assertEqual(self._weights(graph), original)
+
+    def test_edge_cost_increase_failure_restores_cost(self):
+        original = self._costs(self._branching_graph())
+        graph, state = self._run_failing_analysis("costs", walk_index=0)
+
+        self.assertNotEqual(state["costs_at_failure"], original)
+        self.assertEqual(self._costs(graph), original)
+
+    def test_edge_cost_decrease_failure_restores_cost(self):
+        original = self._costs(self._branching_graph())
+        graph, state = self._run_failing_analysis("costs", walk_index=1)
+
+        self.assertNotEqual(state["costs_at_failure"], original)
+        self.assertEqual(self._costs(graph), original)
+
+    def test_payoff_failure_restores_payoff(self):
+        graph = self._branching_graph()
+        original = sorted((node.node_id, node.payoff) for node in graph.node_list())
+        self._fail_on_walk(graph, 0)
+
+        with self.assertRaises(_SimulationFailure):
+            graph.analyze_sensitivity(
+                parameter_type="payoffs",
+                num_simulations=1,
+                perturbation=0.1,
+                baseline_ev=0.0,
+            )
+
+        after = sorted((node.node_id, node.payoff) for node in graph.node_list())
+        self.assertEqual(after, original)
+
+
 class TestElasticitySign(unittest.TestCase):
     """Elasticity is a magnitude for every parameter type, including negative baselines."""
 
