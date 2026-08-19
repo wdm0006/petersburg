@@ -1593,3 +1593,152 @@ class TestSensitivityParameterTypeValidation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSampleCountValidation(unittest.TestCase):
+    """Sample-count arguments are rejected at the API boundary, not during aggregation."""
+
+    NON_POSITIVE = (0, -1, -100)
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _branching_graph(self):
+        """Start node 1 with two weighted, costed branches, so every type has candidates."""
+        return Graph().from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 100, "after": [{"node_id": 1, "cost": 10, "weight": 3}]},
+                3: {"payoff": 40, "after": [{"node_id": 1, "cost": 5, "weight": 1}]},
+            }
+        )
+
+    def test_get_options_rejects_non_positive_iters(self):
+        graph = self._branching_graph()
+
+        for iters in self.NON_POSITIVE:
+            for extended_stats in (False, True):
+                with self.assertRaises(ValueError) as ctx:
+                    graph.get_options(iters=iters, extended_stats=extended_stats)
+
+                message = str(ctx.exception)
+                self.assertIn("iters", message)
+                self.assertIn(repr(iters), message)
+
+    def test_analyze_sensitivity_rejects_non_positive_num_simulations(self):
+        graph = self._branching_graph()
+
+        for num_simulations in self.NON_POSITIVE:
+            for parameter_type in ("edge_weights", "costs", "payoffs"):
+                with self.assertRaises(ValueError) as ctx:
+                    graph.analyze_sensitivity(
+                        parameter_type=parameter_type, num_simulations=num_simulations
+                    )
+
+                message = str(ctx.exception)
+                self.assertIn("num_simulations", message)
+                self.assertIn(repr(num_simulations), message)
+
+    def test_analyze_sensitivity_rejects_non_positive_count_with_supplied_baseline(self):
+        # With baseline_ev supplied there is no baseline loop to fail, so an unguarded
+        # run would silently average an empty perturbation arm into NaN.
+        graph = self._branching_graph()
+
+        with self.assertRaises(ValueError):
+            graph.analyze_sensitivity(num_simulations=0, baseline_ev=12.5)
+
+    def test_identify_critical_parameters_rejects_non_positive_num_simulations(self):
+        graph = self._branching_graph()
+
+        for num_simulations in self.NON_POSITIVE:
+            with self.assertRaises(ValueError) as ctx:
+                graph.identify_critical_parameters(num_simulations=num_simulations)
+
+            self.assertIn("num_simulations", str(ctx.exception))
+
+    def test_print_sensitivity_report_rejects_non_positive_num_simulations(self):
+        graph = self._branching_graph()
+
+        for num_simulations in self.NON_POSITIVE:
+            with self.assertRaises(ValueError) as ctx:
+                with redirect_stdout(io.StringIO()):
+                    graph.print_sensitivity_report(num_simulations=num_simulations)
+
+            self.assertIn("num_simulations", str(ctx.exception))
+
+    def test_identify_critical_parameters_rejects_before_estimating_the_baseline(self):
+        # Its own guard is what makes this fail fast: without it the shared baseline is
+        # averaged from an empty sample (a NaN plus a NumPy warning) before the first
+        # analyze_sensitivity call rejects the count.
+        graph = self._branching_graph()
+
+        def unexpected_baseline(*args, **kwargs):
+            raise AssertionError("a baseline was estimated before num_simulations was validated")
+
+        graph._baseline_expected_value = unexpected_baseline
+
+        with self.assertRaises(ValueError):
+            graph.identify_critical_parameters(num_simulations=0)
+
+    def test_non_integer_counts_are_rejected(self):
+        # A fractional count cannot describe a number of walks; rejecting it here replaces
+        # an opaque TypeError raised much later by range().
+        graph = self._branching_graph()
+
+        for count in (10.5, 5.0, "100", None):
+            with self.assertRaises(ValueError) as ctx:
+                graph.get_options(iters=count)
+            self.assertIn("iters", str(ctx.exception))
+
+            with self.assertRaises(ValueError) as ctx:
+                graph.analyze_sensitivity(num_simulations=count)
+            self.assertIn("num_simulations", str(ctx.exception))
+
+            with self.assertRaises(ValueError) as ctx:
+                graph.identify_critical_parameters(num_simulations=count)
+            self.assertIn("num_simulations", str(ctx.exception))
+
+    def test_sensitivity_rejection_precedes_any_walk(self):
+        # A guard placed after the baseline (or after aggregation) would leave the report
+        # NaN-valued rather than raising; shadowing get_outcome also proves no walk is taken.
+        graph = self._branching_graph()
+
+        def unexpected_get_outcome(*args, **kwargs):
+            raise AssertionError("get_outcome was called before num_simulations was validated")
+
+        graph.get_outcome = unexpected_get_outcome
+
+        with self.assertRaises(ValueError):
+            graph.analyze_sensitivity(num_simulations=0)
+        with self.assertRaises(ValueError):
+            graph.identify_critical_parameters(num_simulations=-1)
+
+    def test_positive_counts_are_unchanged(self):
+        graph = self._branching_graph()
+
+        options = graph.get_options(iters=25)
+        self.assertEqual(set(options.keys()), {2, 3})
+        for value in options.values():
+            self.assertIsInstance(value, float)
+
+        extended = graph.get_options(iters=25, extended_stats=True)
+        self.assertEqual(set(extended.keys()), {2, 3})
+        for stats in extended.values():
+            self.assertEqual(set(stats.keys()), {"mean", "max", "min", "count"})
+            self.assertEqual(stats["count"], 25)
+
+        analysis = graph.analyze_sensitivity(num_simulations=5)
+        self.assertFalse(np.isnan(analysis["baseline_ev"]))
+        self.assertTrue(analysis["results"])
+
+        critical = graph.identify_critical_parameters(num_simulations=5)
+        self.assertFalse(np.isnan(critical["baseline_ev"]))
+        self.assertTrue(critical["top_parameters"])
+
+    def test_numpy_integer_counts_are_accepted(self):
+        # Counts routinely arrive from numpy computations; those are integers too.
+        graph = self._branching_graph()
+
+        self.assertEqual(len(graph.get_options(iters=np.int64(4))), 2)
+        self.assertTrue(graph.analyze_sensitivity(num_simulations=np.int64(2))["results"])

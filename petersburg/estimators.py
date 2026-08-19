@@ -7,6 +7,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
 from petersburg import graph as pg
+from petersburg.graph import validate_sample_count
 
 __author__ = "willmcginnis"
 
@@ -203,10 +204,12 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
 
         :param X:
         :param y:
+        :raises ValueError: If num_simulations is not a positive integer
         :return:
         """
 
         _require_fitted(self)
+        validate_sample_count("num_simulations", self.num_simulations)
 
         g = pg.Graph(random_state=self.random_state)
 
@@ -378,10 +381,12 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
 
         :param X:
         :param y:
+        :raises ValueError: If num_simulations is not a positive integer
         :return:
         """
 
         _require_fitted(self)
+        validate_sample_count("num_simulations", self.num_simulations)
 
         g = pg.Graph(random_state=self.random_state)
 
