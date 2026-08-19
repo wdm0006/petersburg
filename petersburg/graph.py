@@ -10,6 +10,7 @@
 
 import numbers
 import re
+from contextlib import contextmanager
 
 import numpy as np
 
@@ -43,6 +44,29 @@ def validate_sample_count(name, value):
 
     if not isinstance(value, numbers.Integral) or value <= 0:
         raise ValueError(f"{name} must be a positive integer, got {value!r}")
+
+
+@contextmanager
+def _perturbed_edge_weight(edge, edge_index, weight):
+    """Temporarily install a transition weight, restoring the original on exit."""
+    outcomes = edge.from_node.outcomes
+    original_outcome = outcomes[edge_index]
+    try:
+        outcomes[edge_index] = (edge, weight)
+        yield
+    finally:
+        outcomes[edge_index] = original_outcome
+
+
+@contextmanager
+def _perturbed_edge_cost(edge, cost):
+    """Temporarily install an edge cost, restoring the original on exit."""
+    original_cost = edge.cost
+    try:
+        edge.cost = cost
+        yield
+    finally:
+        edge.cost = original_cost
 
 
 class Graph:
@@ -685,24 +709,18 @@ class Graph:
 
             for edge, edge_index, original_weight in candidates[:max_params]:
                 # Test increased weight
-                edge.from_node.outcomes[edge_index] = (edge, original_weight * (1 + perturbation))
-                increased_outcomes = []
-                for _ in range(num_simulations):
-                    increased_outcomes.append(self.get_outcome())
-                increased_ev = np.mean(increased_outcomes)
+                with _perturbed_edge_weight(edge, edge_index, original_weight * (1 + perturbation)):
+                    increased_outcomes = []
+                    for _ in range(num_simulations):
+                        increased_outcomes.append(self.get_outcome())
+                    increased_ev = np.mean(increased_outcomes)
 
                 # Test decreased weight
-                edge.from_node.outcomes[edge_index] = (
-                    edge,
-                    original_weight * (1 - perturbation),
-                )
-                decreased_outcomes = []
-                for _ in range(num_simulations):
-                    decreased_outcomes.append(self.get_outcome())
-                decreased_ev = np.mean(decreased_outcomes)
-
-                # Restore original weight
-                edge.from_node.outcomes[edge_index] = (edge, original_weight)
+                with _perturbed_edge_weight(edge, edge_index, original_weight * (1 - perturbation)):
+                    decreased_outcomes = []
+                    for _ in range(num_simulations):
+                        decreased_outcomes.append(self.get_outcome())
+                    decreased_ev = np.mean(decreased_outcomes)
 
                 # Calculate sensitivity (average absolute change in EV)
                 sensitivity = (
@@ -732,21 +750,18 @@ class Graph:
                 original_cost = edge.cost
 
                 # Test increased cost
-                edge.cost = original_cost * (1 + perturbation)
-                increased_outcomes = []
-                for _ in range(num_simulations):
-                    increased_outcomes.append(self.get_outcome())
-                increased_ev = np.mean(increased_outcomes)
+                with _perturbed_edge_cost(edge, original_cost * (1 + perturbation)):
+                    increased_outcomes = []
+                    for _ in range(num_simulations):
+                        increased_outcomes.append(self.get_outcome())
+                    increased_ev = np.mean(increased_outcomes)
 
                 # Test decreased cost
-                edge.cost = original_cost * (1 - perturbation)
-                decreased_outcomes = []
-                for _ in range(num_simulations):
-                    decreased_outcomes.append(self.get_outcome())
-                decreased_ev = np.mean(decreased_outcomes)
-
-                # Restore original cost
-                edge.cost = original_cost
+                with _perturbed_edge_cost(edge, original_cost * (1 - perturbation)):
+                    decreased_outcomes = []
+                    for _ in range(num_simulations):
+                        decreased_outcomes.append(self.get_outcome())
+                    decreased_ev = np.mean(decreased_outcomes)
 
                 sensitivity = (
                     abs(increased_ev - baseline_ev) + abs(decreased_ev - baseline_ev)
