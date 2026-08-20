@@ -47,6 +47,32 @@ def _validate_path_target(estimator, y):
     return y
 
 
+def _validate_feature_matrix(estimator, X):
+    """
+    Coerces a feature matrix to an array and rejects shapes that cannot be indexed by row.
+
+    ``predict`` reads ``X.shape[0]`` and slices ``X[row, :]``, and ``MixedModeEstimator.fit``
+    masks ``X`` with a boolean array derived from ``y``, so a list-of-lists or a 1-D input
+    otherwise fails deep inside those operations with an opaque ``AttributeError``,
+    ``IndexError``, or ``TypeError``.
+
+    :param estimator: the estimator being used, named in the error message
+    :param X: array-like feature matrix, one row per sample
+    :return: the feature matrix as a ``numpy`` array
+    """
+
+    X = np.asarray(X)
+    name = estimator.__class__.__name__
+
+    if X.ndim != 2:
+        raise ValueError(
+            f"{name} requires a 2D feature matrix with one row per sample, "
+            f"but X has {X.ndim} dimension(s)."
+        )
+
+    return X
+
+
 def _build_categories(y):
     """
     Builds the ordered ``(layer, value)`` category list for a multi-column y.
@@ -204,12 +230,13 @@ class FrequencyEstimator(BaseEstimator, ClassifierMixin):
 
         :param X:
         :param y:
-        :raises ValueError: If num_simulations is not a positive integer
+        :raises ValueError: If num_simulations is not a positive integer, or X is not 2D
         :return:
         """
 
         _require_fitted(self)
         validate_sample_count("num_simulations", self.num_simulations)
+        X = _validate_feature_matrix(self, X)
 
         g = pg.Graph(random_state=self.random_state)
 
@@ -323,10 +350,18 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
         """
         :param X:
         :param y:
+        :raises ValueError: If X is not 2D, or X and y describe a different number of samples
         :return:
         """
 
         y = _validate_path_target(self, y)
+        X = _validate_feature_matrix(self, X)
+
+        if X.shape[0] != y.shape[0]:
+            raise ValueError(
+                f"{self.__class__.__name__} requires X and y to describe the same samples, "
+                f"but X has {X.shape[0]} row(s) and y has {y.shape[0]} row(s)."
+            )
 
         # first update the frequencies
         self._update_frequencies(y)
@@ -381,12 +416,13 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
 
         :param X:
         :param y:
-        :raises ValueError: If num_simulations is not a positive integer
+        :raises ValueError: If num_simulations is not a positive integer, or X is not 2D
         :return:
         """
 
         _require_fitted(self)
         validate_sample_count("num_simulations", self.num_simulations)
+        X = _validate_feature_matrix(self, X)
 
         g = pg.Graph(random_state=self.random_state)
 

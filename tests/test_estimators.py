@@ -408,6 +408,123 @@ class TestEstimatorPathTargetValidation(unittest.TestCase):
         self.assertTrue(trained)
 
 
+class TestEstimatorFeatureMatrixValidation(unittest.TestCase):
+    """predict, score, and MixedModeEstimator.fit coerce and shape-check the feature matrix."""
+
+    ESTIMATORS = (FrequencyEstimator, MixedModeEstimator)
+
+    # (case name, malformed feature matrix, expected dimension count)
+    MALFORMED = (
+        ("one_dimensional_array", np.array([1.0, 2.0, 3.0]), 1),
+        ("one_dimensional_list", [1.0, 2.0, 3.0], 1),
+        ("scalar", 1.0, 0),
+        ("three_dimensional", np.zeros((3, 1, 1)), 3),
+    )
+
+    def _valid_data(self):
+        X = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+        y = np.array([["a", "x"], ["a", "y"], ["b", "x"]])
+        return X, y
+
+    def test_predict_and_score_accept_a_list_of_lists_feature_matrix(self):
+        X, y = self._valid_data()
+
+        for cls in self.ESTIMATORS:
+            with self.subTest(estimator=cls.__name__):
+                est = cls(num_simulations=5, random_state=7).fit(X, y)
+
+                expected = est.predict(X)
+                predicted = est.predict(X.tolist())
+
+                self.assertEqual(predicted.shape, (3, 1))
+                self.assertEqual(predicted.dtype, object)
+                self.assertEqual(predicted.ravel().tolist(), expected.ravel().tolist())
+                self.assertEqual(est.score(X.tolist(), y), est.score(X, y))
+
+    def test_predict_rejects_a_feature_matrix_that_is_not_2d(self):
+        X, y = self._valid_data()
+
+        for cls in self.ESTIMATORS:
+            est = cls(num_simulations=5).fit(X, y)
+            for case, bad_X, ndim in self.MALFORMED:
+                with self.subTest(estimator=cls.__name__, case=case):
+                    with self.assertRaises(ValueError) as ctx:
+                        est.predict(bad_X)
+
+                    message = str(ctx.exception)
+                    self.assertIn(cls.__name__, message)
+                    self.assertIn("2D feature matrix", message)
+                    self.assertIn(f"{ndim} dimension(s)", message)
+
+    def test_unfitted_estimator_still_reports_the_fitted_state_first(self):
+        for cls in self.ESTIMATORS:
+            with self.subTest(estimator=cls.__name__):
+                with self.assertRaises(NotFittedError):
+                    cls(num_simulations=5).predict(np.array([1.0, 2.0, 3.0]))
+
+    def test_mixed_mode_fit_trains_the_same_classifiers_from_a_list_feature_matrix(self):
+        # The classifier-training loop only runs once a transition reaches _min_samples, so
+        # this is the size at which fit actually masks X with a boolean array derived from y.
+        X, y = _classifier_training_data()
+
+        from_array = MixedModeEstimator(num_simulations=1).fit(X, y)
+        from_list = MixedModeEstimator(num_simulations=1).fit(X.tolist(), y)
+
+        def trained(est):
+            return [
+                (r, c)
+                for r, row in enumerate(est._clf_matrix)
+                for c, clf in enumerate(row)
+                if clf is not None
+            ]
+
+        self.assertEqual(len(trained(from_array)), 2)
+        self.assertEqual(trained(from_list), trained(from_array))
+
+    def test_mixed_mode_fit_rejects_mismatched_row_counts(self):
+        # Below _min_samples the mismatch used to fit silently; above it, it died in the
+        # classifier-training mask. Both sizes must report the same rule.
+        X, y = self._valid_data()
+        big_X, big_y = _classifier_training_data()
+
+        for case, bad_X, bad_y in (
+            ("below_threshold", X[:1], y),
+            ("at_threshold", big_X[:100], big_y),
+        ):
+            with self.subTest(case=case):
+                with self.assertRaises(ValueError) as ctx:
+                    MixedModeEstimator(num_simulations=1).fit(bad_X, bad_y)
+
+                message = str(ctx.exception)
+                self.assertIn("MixedModeEstimator", message)
+                self.assertIn(f"X has {bad_X.shape[0]} row(s)", message)
+                self.assertIn(f"y has {bad_y.shape[0]} row(s)", message)
+
+    def test_mixed_mode_rejected_feature_matrix_leaves_fitted_state_unchanged(self):
+        X, y = self._valid_data()
+        est = MixedModeEstimator(num_simulations=1).fit(X, y)
+        categories = list(est._categories)
+        frequencies = est._frequency_matrix.copy()
+
+        with self.assertRaises(ValueError):
+            est.fit(np.array([1.0, 2.0, 3.0]), y)
+        with self.assertRaises(ValueError):
+            est.fit(X[:1], y)
+
+        self.assertEqual(est._categories, categories)
+        self.assertTrue(np.array_equal(est._frequency_matrix, frequencies))
+
+    def test_frequency_estimator_still_ignores_x(self):
+        # fit documents X as ignored, so None must keep working there and in partial_fit.
+        _, y = self._valid_data()
+
+        est = FrequencyEstimator(num_simulations=1).fit(None, y)
+        self.assertEqual(_terminal_labels(est._categories), {"x", "y"})
+
+        est.partial_fit(None, y)
+        self.assertEqual(est._frequency_matrix.sum(), 6)
+
+
 class TestEstimatorFittedState(unittest.TestCase):
     """predict and score report an estimator that has not been fitted."""
 
