@@ -419,9 +419,9 @@ class Graph:
         identical for the same graph across processes.
 
         Each node carries its ``payoff``. Each edge carries its ``cost``, its transition
-        ``probability`` (``None`` for a classifier-weighted edge), and ``weight``, which
-        remains the cost so existing callers passing ``weight=`` to networkx path
-        algorithms are unaffected.
+        ``probability`` (``None`` for every edge from a source with a classifier-weighted
+        outcome), and ``weight``, which remains the cost so existing callers passing
+        ``weight=`` to networkx path algorithms are unaffected.
 
         A DiGraph holds one edge per node pair, so parallel edges sharing endpoints
         collapse into the last one in sort order.
@@ -439,13 +439,12 @@ class Graph:
             g.add_node(node.node_id, payoff=node.payoff)
 
         for edge in sorted(self.edge_list(), key=self._stable_edge_sort_key):
-            found = self._numeric_weight(edge)
             g.add_edge(
                 edge.from_node.node_id,
                 edge.to_node.node_id,
                 weight=edge.cost,
                 cost=edge.cost,
-                probability=None if found is None else found[1],
+                probability=self._transition_probability(edge),
             )
 
         return g
@@ -525,16 +524,9 @@ class Graph:
             if edge.cost != 0:
                 label_parts.append(f"Cost: ${edge.cost}")
 
-            # Try to get weight from edge (it's stored in the from_node's outcomes)
-            weight = None
-            for outcome_edge, w in edge.from_node.outcomes:
-                if outcome_edge == edge:
-                    if is_numeric_weight(w):
-                        weight = w
-                    break
-
-            if weight is not None and weight != 1.0:
-                label_parts.append(f"P: {weight:.2f}")
+            probability = self._transition_probability(edge)
+            if probability is not None and probability != 1.0:
+                label_parts.append(f"P: {probability:.2f}")
 
             if label_parts:
                 label = " | ".join(label_parts)
@@ -609,6 +601,23 @@ class Graph:
             if outcome_edge == edge and is_numeric_weight(weight):
                 return idx, weight
         return None
+
+    @staticmethod
+    def _transition_probability(edge):
+        """
+        Return an edge's static probability from its source node's relative weights.
+
+        :param edge: The edge to look up
+        :return: Normalized probability, or None when any sibling weight is classifier-based
+        """
+        weights = [weight for _, weight in edge.from_node.outcomes]
+        if not all(is_numeric_weight(weight) for weight in weights):
+            return None
+
+        found = Graph._numeric_weight(edge)
+        if found is None:
+            return None
+        return found[1] / sum(weights)
 
     @staticmethod
     def _elasticity(sensitivity, baseline_ev):

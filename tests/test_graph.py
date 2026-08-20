@@ -802,6 +802,52 @@ class TestToMermaid(unittest.TestCase):
         )
         self.assertTrue(g.to_mermaid(orientation="TD").startswith("graph TD"))
 
+    def test_relative_weights_are_rendered_as_probabilities(self):
+        g = Graph().from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 0, "after": [{"node_id": 1, "weight": 3}]},
+                3: {"payoff": 0, "after": [{"node_id": 1, "weight": 1}]},
+            }
+        )
+
+        mermaid = g.to_mermaid()
+
+        self.assertIn("node_1 -->|P: 0.75| node_2", mermaid)
+        self.assertIn("node_1 -->|P: 0.25| node_3", mermaid)
+
+    def test_equivalent_equal_weight_branches_render_identically(self):
+        def render(weight):
+            return (
+                Graph()
+                .from_dict(
+                    {
+                        1: {"payoff": 0, "after": []},
+                        2: {"payoff": 0, "after": [{"node_id": 1, "weight": weight}]},
+                        3: {"payoff": 0, "after": [{"node_id": 1, "weight": weight}]},
+                    }
+                )
+                .to_mermaid()
+            )
+
+        integer_weights = render(1)
+
+        self.assertEqual(integer_weights, render(0.5))
+        self.assertEqual(integer_weights.count("P: 0.50"), 2)
+
+    def test_classifier_weighted_source_omits_all_probabilities(self):
+        class Classifier:
+            def predict_proba(self, feature_vector):
+                return np.array([[0.5, 0.5]])
+
+        graph = Graph()
+        start = Node(0)
+        start.add_outcome(Node(1), weight=3)
+        start.add_outcome(Node(2), classifier=Classifier())
+        graph.start_node = start
+
+        self.assertNotIn("P:", graph.to_mermaid())
+
     def test_mermaid_styles_terminal_node_with_nonzero_id(self):
         g = Graph()
         g.from_dict(
@@ -889,7 +935,7 @@ def _wide_spec(start_id=100, children=80):
 
 
 _NODE_LINE = re.compile(r"^ {4}(\S+?)(?:\(\(|\[)")
-_EDGE_LINE = re.compile(r"^ {4}(\S+) -->(?:\|[^|]*\|)? (\S+)$")
+_EDGE_LINE = re.compile(r"^ {4}(\S+) -->(?:\|.*\|)? (\S+)$")
 
 
 def _mermaid_node_ids(mermaid):
@@ -1080,6 +1126,32 @@ class TestToNetworkx(unittest.TestCase):
         self.assertEqual(g.edges[1, 3]["cost"], 4)
         self.assertEqual(g.edges[1, 3]["probability"], 0.75)
 
+    def test_relative_weights_are_normalized_as_probabilities(self):
+        graph = Graph().from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 0, "after": [{"node_id": 1, "weight": 3}]},
+                3: {"payoff": 0, "after": [{"node_id": 1, "weight": 1}]},
+            }
+        )
+
+        exported = graph.to_networkx()
+
+        self.assertEqual(exported.edges[1, 2]["probability"], 0.75)
+        self.assertEqual(exported.edges[1, 3]["probability"], 0.25)
+        self.assertEqual(sum(data["probability"] for _, _, data in exported.edges(data=True)), 1.0)
+
+    def test_single_outcome_has_probability_one(self):
+        graph = Graph().from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 0, "after": [{"node_id": 1, "weight": 7}]},
+            }
+        )
+
+        self.assertEqual(graph.to_networkx().edges[1, 2]["probability"], 1.0)
+        self.assertNotIn("P:", graph.to_mermaid())
+
     def test_weight_still_holds_the_cost(self):
         graph = Graph().from_dict(_attribute_spec())
         g = graph.to_networkx()
@@ -1104,6 +1176,22 @@ class TestToNetworkx(unittest.TestCase):
 
         self.assertEqual(g.edges[0, 1]["cost"], 7)
         self.assertIsNone(g.edges[0, 1]["probability"])
+
+    def test_classifier_weighted_source_has_no_static_probabilities(self):
+        class Classifier:
+            def predict_proba(self, feature_vector):
+                return np.array([[0.5, 0.5]])
+
+        graph = Graph()
+        start = Node(0)
+        start.add_outcome(Node(1), weight=3)
+        start.add_outcome(Node(2), classifier=Classifier())
+        graph.start_node = start
+
+        exported = graph.to_networkx()
+
+        self.assertIsNone(exported.edges[0, 1]["probability"])
+        self.assertIsNone(exported.edges[0, 2]["probability"])
 
     def test_parallel_edges_collapse_deterministically(self):
         # A DiGraph holds one edge per pair, so the last edge in sort order wins; the
