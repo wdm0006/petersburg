@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2026-08-26
 
 First release published to PyPI since `0.0.1`. The `0.1.0` section below was tagged in the
-changelog but never uploaded, so installing from PyPI today still gets `0.0.1`; upgrading to
-`0.2.0` picks up everything in both sections.
+changelog but is not on PyPI, so installing from PyPI today still gets `0.0.1` (uploaded 2016-01-16);
+upgrading to `0.2.0` picks up everything in both sections.
 
 ### Added
 
