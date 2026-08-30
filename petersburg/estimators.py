@@ -400,10 +400,8 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
                     # create bool for if its to the correct option
                     y_t = y_t == label_term
 
-                    try:
+                    if np.unique(y_t).size > 1:
                         self._clf_matrix[r_idx][c_idx] = self._clf(**clf_args).fit(X_t, y_t)
-                    except ValueError:
-                        self._clf_matrix[r_idx][c_idx] = None
 
         return self
 

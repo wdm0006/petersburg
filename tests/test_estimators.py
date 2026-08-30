@@ -222,6 +222,25 @@ class TestMixedModeEstimatorFrequencyFallback(unittest.TestCase):
 class TestMixedModeEstimatorClassifierBacked(unittest.TestCase):
     """At/above the sample threshold, transitions get feature-dependent classifiers."""
 
+    def test_single_class_transition_keeps_frequency_fallback(self):
+        X = np.zeros((100, 1))
+        y = np.array([["apply", "approved"]] * 100)
+
+        est = MixedModeEstimator().fit(X, y)
+
+        source = est._categories.index((0, "apply"))
+        terminal = est._categories.index((1, "approved"))
+        self.assertEqual(est._frequency_matrix[source, terminal], est._min_samples)
+        self.assertIsNone(est._clf_matrix[source][terminal])
+
+    def test_classifier_training_value_error_propagates(self):
+        X = np.zeros((240, 1))
+        X[0, 0] = np.nan
+        y = np.array([["apply", "approved"]] * 120 + [["apply", "rejected"]] * 120)
+
+        with self.assertRaises(ValueError):
+            MixedModeEstimator().fit(X, y)
+
     def test_classifier_trained_at_threshold(self):
         X, y = _classifier_training_data()
         est = MixedModeEstimator(num_simulations=25).fit(X, y)
