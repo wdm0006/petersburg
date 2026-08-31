@@ -2,10 +2,10 @@ petersburg
 ==========
 
 ![CI](https://github.com/wdm0006/petersburg/workflows/CI/badge.svg)
-![Python Versions](https://img.shields.io/badge/python-3.8%20%7C%203.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)
+![Python Versions](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)
 ![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)
 
-version number: 0.1.0
+version number: 0.2.0
 author: Will McGinnis
 
 Overview
