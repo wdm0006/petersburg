@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Exception hierarchy for the public API. `petersburg.PetersburgError` is the base class for every
+  error petersburg raises on invalid use. `petersburg.ValidationError` (a `PetersburgError` and a
+  `ValueError`) is raised by validation of adjacency matrices, sensitivity arguments, estimator
+  targets and feature matrices, node payoffs, and transition weights. `petersburg.SpecValidationError`
+  (a `ValidationError` that is also an `AttributeError`) is raised for invalid graph specifications,
+  which previously escaped as a bare `AttributeError` from `Graph.from_dict()`. Existing
+  `except ValueError` and `except AttributeError` callers keep working unchanged.
+
 ## [0.2.0] - 2026-08-26
 
 First release published to PyPI since `0.0.1`. The `0.1.0` section below was tagged in the
