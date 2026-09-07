@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   available. Both `partial_fit()` implementations accept scikit-learn's incremental `classes`
   argument for API compatibility; the category set is learned from the data, so it is not
   enforced.
+- **Outcome distributions in `get_options()`.** Opt-in `distribution=True` augments each option's
+  stats with `std`, `percentiles` (`p5`/`p25`/`p50`/`p75`/`p95`), `p_loss` (fraction of simulated
+  outcomes strictly below zero), `var_alpha` and `cvar_alpha` (value-at-risk and expected shortfall
+  in outcome space, at quantile level `alpha`, default 0.05), and `return_samples=True` also returns
+  each option's raw per-walk outcome samples. Default output is unchanged.
 
 ### Changed
 
