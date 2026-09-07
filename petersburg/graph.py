@@ -14,6 +14,7 @@ from contextlib import contextmanager
 
 import numpy as np
 
+from petersburg.exceptions import SpecValidationError, ValidationError
 from petersburg.nodes import (
     GaussianNode,
     LogNormalNode,
@@ -39,11 +40,11 @@ def validate_sample_count(name, value):
 
     :param name: Argument name, used in the error message
     :param value: Requested number of samples
-    :raises ValueError: If value is not a positive integer
+    :raises ValidationError: If value is not a positive integer
     """
 
     if not isinstance(value, numbers.Integral) or value <= 0:
-        raise ValueError(f"{name} must be a positive integer, got {value!r}")
+        raise ValidationError(f"{name} must be a positive integer, got {value!r}")
 
 
 @contextmanager
@@ -109,15 +110,26 @@ class Graph:
         - 'powerlaw': PowerLawNode with 'scale' and 'alpha'
 
         :param d:
+        :raises SpecValidationError: If the specification is not a dict of node specs, references
+            unknown nodes, contains a cycle, or does not have exactly one starting node
         :return:
         """
 
+        if not isinstance(d, dict):
+            raise SpecValidationError(
+                f"from_dict expects a dict of node specs keyed by node id, got {type(d).__name__}"
+            )
+
         node_types = {}
         for node_id, node_spec in d.items():
+            if not isinstance(node_spec, dict):
+                raise SpecValidationError(
+                    f"Node {node_id} spec must be a dict, got {type(node_spec).__name__}"
+                )
             node_type = node_spec.get("type", "fixed").lower()
             if node_type not in NODE_TYPES:
                 accepted = ", ".join(repr(name) for name in NODE_TYPES)
-                raise AttributeError(
+                raise SpecValidationError(
                     f"Node {node_id} has unrecognized type {node_type!r}; "
                     f"accepted types are: {accepted}"
                 )
@@ -128,7 +140,7 @@ class Graph:
             for edge in node_spec["after"]:
                 predecessor_id = edge["node_id"]
                 if predecessor_id not in d:
-                    raise AttributeError(
+                    raise SpecValidationError(
                         f"Node {node_id} lists unknown predecessor node_id {predecessor_id} "
                         f"in its 'after' list"
                     )
@@ -142,7 +154,7 @@ class Graph:
                 cycle_start = path.index(node_id)
                 cycle = path[cycle_start:] + [node_id]
                 cycle_description = " -> ".join(str(item) for item in cycle)
-                raise AttributeError(f"Graph contains a cycle: {cycle_description}")
+                raise SpecValidationError(f"Graph contains a cycle: {cycle_description}")
             if node_id in visited:
                 return
 
@@ -191,14 +203,16 @@ class Graph:
 
             if not node_spec["after"]:
                 if node is not None:
-                    raise AttributeError("Graph cannot have more than one starting node.")
+                    raise SpecValidationError("Graph cannot have more than one starting node.")
                 node = new_node
                 node_list.update({key: new_node})
             else:
                 node_list.update({key: new_node})
 
         if node is None:
-            raise AttributeError("Dict must contain a starting node (empty list for after key)")
+            raise SpecValidationError(
+                "Dict must contain a starting node (empty list for after key)"
+            )
 
         # now that we have a node list, we want to iterate through all of the other nodes, and then through the after
         # list specified for each, and add the connections that create the graph.
@@ -230,13 +244,13 @@ class Graph:
 
         A = np.asarray(A)
         if A.ndim != 2 or A.shape[0] != A.shape[1]:
-            raise ValueError("Adjacency matrix must be a two-dimensional square array")
+            raise ValidationError("Adjacency matrix must be a two-dimensional square array")
         if not np.issubdtype(A.dtype, np.number) or np.issubdtype(A.dtype, np.complexfloating):
-            raise ValueError("Adjacency matrix entries must be real numeric values")
+            raise ValidationError("Adjacency matrix entries must be real numeric values")
         if np.any(np.isinf(A)):
-            raise ValueError("Adjacency matrix entries must be finite or NaN")
+            raise ValidationError("Adjacency matrix entries must be finite or NaN")
         if np.any(A < 0):
-            raise ValueError("Adjacency matrix entries must be non-negative")
+            raise ValidationError("Adjacency matrix entries must be non-negative")
 
         if labels is None:
             labels = [(1, 1) for _ in range(A.shape[0])]
@@ -375,7 +389,7 @@ class Graph:
         :param extended_stats:
         :param feature_vector: Features passed to classifier-weighted edges. Required when
             the graph uses classifiers for edge weights.
-        :raises ValueError: If iters is not a positive integer
+        :raises ValidationError: If iters is not a positive integer
         :return:
         """
 
@@ -639,10 +653,12 @@ class Graph:
         Reject a perturbation that is not strictly between 0 and 1.
 
         :param perturbation: Fractional parameter variation
-        :raises ValueError: If perturbation is not strictly between 0 and 1
+        :raises ValidationError: If perturbation is not strictly between 0 and 1
         """
         if not 0 < perturbation < 1:
-            raise ValueError(f"perturbation must be strictly between 0 and 1, got {perturbation}")
+            raise ValidationError(
+                f"perturbation must be strictly between 0 and 1, got {perturbation}"
+            )
 
     def _baseline_expected_value(self, num_simulations):
         """
@@ -686,15 +702,17 @@ class Graph:
         :param baseline_ev: Pre-computed baseline expected value to normalize against, or
             None to estimate it here with ``num_simulations`` walks
         :return: Dictionary with sensitivity results sorted by impact
-        :raises ValueError: If parameter_type is not one of 'edge_weights', 'costs', or 'payoffs'
-        :raises ValueError: If perturbation is not strictly between 0 and 1
-        :raises ValueError: If num_simulations is not a positive integer
+        :raises ValidationError: If parameter_type is not one of 'edge_weights', 'costs', or 'payoffs'
+        :raises ValidationError: If perturbation is not strictly between 0 and 1
+        :raises ValidationError: If num_simulations is not a positive integer
         """
         import numpy as np
 
         if parameter_type not in SENSITIVITY_PARAMETER_TYPES:
             accepted = ", ".join(repr(name) for name in SENSITIVITY_PARAMETER_TYPES)
-            raise ValueError(f"parameter_type must be one of {accepted}, got {parameter_type!r}")
+            raise ValidationError(
+                f"parameter_type must be one of {accepted}, got {parameter_type!r}"
+            )
 
         self._validate_perturbation(perturbation)
         validate_sample_count("num_simulations", num_simulations)
@@ -861,8 +879,8 @@ class Graph:
         :param max_params: Maximum number of parameters analyzed per parameter type,
             or None for no limit
         :return: Dictionary with analysis summary and top parameters
-        :raises ValueError: If perturbation is not strictly between 0 and 1
-        :raises ValueError: If num_simulations is not a positive integer
+        :raises ValidationError: If perturbation is not strictly between 0 and 1
+        :raises ValidationError: If num_simulations is not a positive integer
         """
         self._validate_perturbation(perturbation)
         validate_sample_count("num_simulations", num_simulations)

@@ -7,6 +7,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
 from petersburg import graph as pg
+from petersburg.exceptions import ValidationError
 from petersburg.graph import validate_sample_count
 
 __author__ = "willmcginnis"
@@ -30,16 +31,16 @@ def _validate_path_target(estimator, y):
     name = estimator.__class__.__name__
 
     if y.ndim != 2:
-        raise ValueError(
+        raise ValidationError(
             f"{name} requires a 2D path target with one column per decision layer, "
             f"but y has {y.ndim} dimension(s)."
         )
 
     if y.shape[0] == 0:
-        raise ValueError(f"{name} requires at least one training path, but y has no rows.")
+        raise ValidationError(f"{name} requires at least one training path, but y has no rows.")
 
     if y.shape[1] < 2:
-        raise ValueError(
+        raise ValidationError(
             f"{name} requires a path target with at least two decision layers, but y has "
             f"{y.shape[1]} column(s); no layer-to-layer transition can be observed."
         )
@@ -65,7 +66,7 @@ def _validate_feature_matrix(estimator, X):
     name = estimator.__class__.__name__
 
     if X.ndim != 2:
-        raise ValueError(
+        raise ValidationError(
             f"{name} requires a 2D feature matrix with one row per sample, "
             f"but X has {X.ndim} dimension(s)."
         )
@@ -115,7 +116,7 @@ def _terminal_accuracy(estimator, X, y, sample_weight=None):
 
     y = np.asarray(y)
     if y.ndim != 2 or y.shape[1] == 0:
-        raise ValueError("y must be a non-empty 2D path target")
+        raise ValidationError("y must be a non-empty 2D path target")
 
     return accuracy_score(y[:, -1], estimator.predict(X).ravel(), sample_weight=sample_weight)
 
@@ -135,7 +136,7 @@ def _partial_fit_category_index(estimator, column, value):
     try:
         return estimator._categories.index((column, value))
     except ValueError:
-        raise ValueError(
+        raise ValidationError(
             f"{estimator.__class__.__name__}.partial_fit received unknown category {value!r} "
             f"in column {column}; partial_fit can only update counts for categories seen "
             f"during fit."
@@ -358,7 +359,7 @@ class MixedModeEstimator(BaseEstimator, ClassifierMixin):
         X = _validate_feature_matrix(self, X)
 
         if X.shape[0] != y.shape[0]:
-            raise ValueError(
+            raise ValidationError(
                 f"{self.__class__.__name__} requires X and y to describe the same samples, "
                 f"but X has {X.shape[0]} row(s) and y has {y.shape[0]} row(s)."
             )
