@@ -4,6 +4,7 @@ Tests for the core Graph API: construction, simulation, options, and export.
 
 import importlib.util
 import io
+import math
 import os
 import random
 import re
@@ -557,6 +558,243 @@ class TestGetOptionsStartPayoff(unittest.TestCase):
         # A different seed draws different start payoffs, so the option value moves with them.
         other = self._uniform_start_graph(random_state=12)
         self.assertNotEqual(first.get_options(iters=25), other.get_options(iters=25))
+
+
+class TestGetOptionsOutcomeDistributions(unittest.TestCase):
+    """Outcome-distribution stats are statistically sound and backward compatible."""
+
+    def setUp(self):
+        random.seed(42)
+        np.random.seed(42)
+
+    def _symmetric_gaussian_graph(self, random_state):
+        # Two mirrored 50/50 options. The start payoff is a fixed 0 and each option's node
+        # samples its own gaussian payoff, so per-walk outcomes are exactly N(+2, 1) and
+        # N(-2, 1): symmetric options around known expected values.
+        g = Graph(random_state=random_state)
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {
+                    "type": "gaussian",
+                    "mean": 2,
+                    "std": 1,
+                    "after": [{"node_id": 1, "cost": 0}],
+                },
+                3: {
+                    "type": "gaussian",
+                    "mean": -2,
+                    "std": 1,
+                    "after": [{"node_id": 1, "cost": 0}],
+                },
+            }
+        )
+        return g
+
+    def test_symmetric_options_median_matches_ev_within_three_standard_errors(self):
+        iters = 4000
+        # For a normal sample the median's asymptotic standard error is
+        # sqrt(pi/2) * sigma / sqrt(iters); allow three of those (~0.06 at 4000 iters).
+        tolerance = 3.0 * math.sqrt(math.pi / 2.0) / math.sqrt(iters)
+        options = self._symmetric_gaussian_graph(random_state=7).get_options(
+            iters=iters, distribution=True
+        )
+        self.assertLessEqual(abs(options[2]["percentiles"]["p50"] - 2.0), tolerance)
+        self.assertLessEqual(abs(options[3]["percentiles"]["p50"] - (-2.0)), tolerance)
+
+    def _known_loss_graph(self, random_state):
+        # Option 2 walks are N(0.5, 1) (loss probability Phi(-0.5)) and option 3 walks are
+        # N(-1, 2) (loss probability Phi(0.5)); both analytic through the normal CDF.
+        g = Graph(random_state=random_state)
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {
+                    "type": "gaussian",
+                    "mean": 0.5,
+                    "std": 1,
+                    "after": [{"node_id": 1, "cost": 0}],
+                },
+                3: {
+                    "type": "gaussian",
+                    "mean": -1,
+                    "std": 2,
+                    "after": [{"node_id": 1, "cost": 0}],
+                },
+            }
+        )
+        return g
+
+    def test_p_loss_matches_analytic_loss_probability(self):
+        iters = 20000
+        expected = {
+            2: 0.5 * (1 + math.erf(-0.5 / math.sqrt(2))),
+            3: 0.5 * (1 + math.erf(0.5 / math.sqrt(2))),
+        }
+        options = self._known_loss_graph(random_state=11).get_options(
+            iters=iters, distribution=True
+        )
+        for key, analytic in expected.items():
+            with self.subTest(key=key):
+                observed = options[key]["p_loss"]
+                # Three binomial standard errors of a fraction estimated from iters walks.
+                tolerance = 3.0 * math.sqrt(analytic * (1.0 - analytic) / iters)
+                self.assertLessEqual(abs(observed - analytic), tolerance)
+                # Raw samples are only returned when return_samples=True.
+                self.assertNotIn("samples", options[key])
+
+    def _skewed_lognormal_graph(self, random_state):
+        # Strictly positive, right-skewed outcomes: LogNormal(0, 1) payoffs with a fixed
+        # start payoff of 0.
+        g = Graph(random_state=random_state)
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {
+                    "type": "lognormal",
+                    "mu": 0,
+                    "sigma": 1,
+                    "after": [{"node_id": 1, "cost": 0}],
+                },
+            }
+        )
+        return g
+
+    def test_tail_statistics_are_ordered_on_skewed_outcomes(self):
+        options = self._skewed_lognormal_graph(random_state=13).get_options(
+            iters=5000, distribution=True, alpha=0.05
+        )
+        stats = options[2]
+        # Expected shortfall sits at or below value at risk, which sits below the mean of a
+        # right-skewed distribution.
+        self.assertLessEqual(stats["cvar_alpha"], stats["var_alpha"])
+        self.assertLessEqual(stats["var_alpha"], stats["mean"])
+        # Log-normal outcomes are strictly positive, so no simulated walk loses money.
+        self.assertEqual(stats["p_loss"], 0.0)
+
+    def test_same_seed_reproduces_distributions_and_samples(self):
+        def without_samples(stats):
+            return {key: value for key, value in stats.items() if key != "samples"}
+
+        first = self._skewed_lognormal_graph(random_state=21)
+        second = self._skewed_lognormal_graph(random_state=21)
+        other = self._skewed_lognormal_graph(random_state=22)
+        first_stats = first.get_options(iters=500, distribution=True, return_samples=True)
+        second_stats = second.get_options(iters=500, distribution=True, return_samples=True)
+        other_stats = other.get_options(iters=500, distribution=True, return_samples=True)
+
+        self.assertEqual(
+            {key: without_samples(stats) for key, stats in first_stats.items()},
+            {key: without_samples(stats) for key, stats in second_stats.items()},
+        )
+        self.assertIsInstance(first_stats[2]["samples"], np.ndarray)
+        self.assertEqual(first_stats[2]["samples"].shape, (500,))
+        self.assertTrue(np.array_equal(first_stats[2]["samples"], second_stats[2]["samples"]))
+        self.assertFalse(np.array_equal(first_stats[2]["samples"], other_stats[2]["samples"]))
+
+    def _mixed_graph(self, random_state):
+        # One deterministic option (100 - 5 = 95) next to one stochastic option
+        # (uniform payoff minus a 2 cost).
+        g = Graph(random_state=random_state)
+        g.from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 100, "after": [{"node_id": 1, "cost": 5}]},
+                3: {
+                    "type": "uniform",
+                    "min_payoff": 0,
+                    "max_payoff": 10,
+                    "after": [{"node_id": 1, "cost": 2}],
+                },
+            }
+        )
+        return g
+
+    def _reference_get_options(self, graph, iters, extended_stats=False):
+        # Verbatim pre-change body of Graph.get_options, run against an identically seeded
+        # graph, to pin the default code path exactly.
+        choice = {}
+        for key, outcome in zip(graph._option_keys(), graph.start_node.outcomes):
+            out = []
+            for _ in range(iters):
+                payoff, cost = outcome[0].get_outcome()
+                out.append(payoff + graph.start_node.sample_payoff() - cost - outcome[0].cost)
+            if not extended_stats:
+                choice.update({key: float(sum(out)) / len(out)})
+            else:
+                choice.update(
+                    {
+                        key: {
+                            "mean": float(sum(out)) / len(out),
+                            "max": max(out),
+                            "min": min(out),
+                            "count": len(out),
+                        }
+                    }
+                )
+        return choice
+
+    def test_default_kwargs_match_pre_change_implementation_exactly(self):
+        for random_state in (7, 1234):
+            with self.subTest(random_state=random_state):
+                plain = self._mixed_graph(random_state)
+                plain_reference = self._mixed_graph(random_state)
+                self.assertEqual(
+                    plain.get_options(iters=250),
+                    self._reference_get_options(plain_reference, iters=250),
+                )
+
+                extended = self._mixed_graph(random_state)
+                extended_reference = self._mixed_graph(random_state)
+                self.assertEqual(
+                    extended.get_options(iters=250, extended_stats=True),
+                    self._reference_get_options(extended_reference, iters=250, extended_stats=True),
+                )
+
+    def test_explicit_default_kwargs_equal_omitted_kwargs(self):
+        explicit = self._mixed_graph(7)
+        omitted = self._mixed_graph(7)
+        self.assertEqual(
+            explicit.get_options(iters=100, distribution=False, alpha=0.05, return_samples=False),
+            omitted.get_options(iters=100),
+        )
+
+    def test_distribution_stats_extend_the_extended_stats_keys(self):
+        options = self._mixed_graph(7).get_options(
+            iters=100, extended_stats=True, distribution=True, return_samples=True
+        )
+        self.assertEqual(set(options.keys()), {2, 3})
+        for stats in options.values():
+            self.assertEqual(
+                set(stats.keys()),
+                {
+                    "mean",
+                    "max",
+                    "min",
+                    "count",
+                    "std",
+                    "percentiles",
+                    "p_loss",
+                    "var_alpha",
+                    "cvar_alpha",
+                    "samples",
+                },
+            )
+            self.assertEqual(set(stats["percentiles"].keys()), {"p5", "p25", "p50", "p75", "p95"})
+            self.assertEqual(stats["count"], 100)
+
+    def test_return_samples_without_distribution_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            self._mixed_graph(7).get_options(iters=10, return_samples=True)
+        self.assertIn("distribution", str(ctx.exception))
+
+    def test_distribution_stats_reject_invalid_alpha_and_short_runs(self):
+        for alpha in (-0.1, 1.5):
+            with self.subTest(alpha=alpha):
+                with self.assertRaises(ValueError):
+                    self._mixed_graph(7).get_options(iters=10, distribution=True, alpha=alpha)
+        with self.assertRaises(ValueError):
+            self._mixed_graph(7).get_options(iters=1, distribution=True)
 
 
 class TestFromAdjMatrix(unittest.TestCase):
