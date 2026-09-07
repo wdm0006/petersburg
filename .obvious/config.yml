@@ -1,0 +1,4 @@
+# Repo policy for obvious workers — auto-detected from GitHub settings 2026-09-07.
+defaultBranch: master
+mergeMethod: merge          # merge, squash, and rebase all allowed; history uses merge commits ("Merge pull request #N")
+deleteBranchOnMerge: false  # per repo settings
