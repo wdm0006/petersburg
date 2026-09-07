@@ -16,6 +16,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (a `ValidationError` that is also an `AttributeError`) is raised for invalid graph specifications,
   which previously escaped as a bare `AttributeError` from `Graph.from_dict()`. Existing
   `except ValueError` and `except AttributeError` callers keep working unchanged.
+- **`predict_proba` on both estimators.** `FrequencyEstimator.predict_proba()` and
+  `MixedModeEstimator.predict_proba()` return an `(n_samples, n_classes)` array whose rows sum
+  to 1, derived from the same per-sample simulated terminal distribution `predict()` consumes:
+  observed transition frequencies for the frequency estimator, and the trained per-transition
+  classifiers' probabilities through the graph's edges for the mixed-mode estimator. Columns
+  follow `classes_`, and with a seeded `random_state` the modal label always matches
+  `predict()`.
+- **scikit-learn fitted-state contract.** Both estimators expose `classes_` (the terminal-layer
+  labels in first-appearance order) and `n_features_in_` after `fit()`, so
+  `sklearn.utils.validation.check_is_fitted` works alongside the existing explicit
+  `NotFittedError` messages. `FrequencyEstimator.fit(X=None, y)` fits without features, in which
+  case `n_features_in_` is absent.
+- **`MixedModeEstimator.partial_fit()`.** The mixed-mode estimator now updates an already-fitted
+  model's transition frequencies with the same semantics as `FrequencyEstimator.partial_fit()`:
+  unfitted estimators delegate to `fit()`, and unseen categories are rejected. Per-transition
+  classifiers are only trained during `fit()`, when each transition's full training subset is
+  available. Both `partial_fit()` implementations accept scikit-learn's incremental `classes`
+  argument for API compatibility; the category set is learned from the data, so it is not
+  enforced.
+
+### Changed
+
+- **`predict()` returns a one-dimensional label array.** Both estimators return shape
+  `(n_samples,)` instead of `(n_samples, 1)`, with the fitted terminal labels introduced in
+  0.2.0 unchanged. `score()` compares predictions in the observed terminal column's dtype, so
+  terminal-label accuracy now also works against integer path targets (it previously raised a
+  mixed-target `ValueError` from sklearn's metrics).
+- **Mixed-mode hyperparameters are constructor parameters.** `MixedModeEstimator` takes
+  `min_samples=100`, `clf=None`, and `clf_args=None`, stored verbatim per the scikit-learn
+  parameter contract so `get_params()`, `set_params()`, and `clone()` see exactly what was
+  passed. `clf=None` resolves to a fresh `LogisticRegression()` at fit time, and `clf_args=None`
+  resolves to an empty argument dict. `GridSearchCV` can tune `min_samples` and nested
+  classifier arguments such as `clf__C` (pass `clf=LogisticRegression()` when tuning nested
+  keys, or search over `clf` values directly), and a `Pipeline` reaches them as `est__clf__C`.
 
 ## [0.2.0] - 2026-08-26
 
