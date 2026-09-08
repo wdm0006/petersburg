@@ -355,8 +355,8 @@ class FrequencyEstimator(ClassifierMixin, BaseEstimator):
     def predict_proba(self, X):
         """
         Normalizes the full per-sample terminal distribution predict consumes into
-        probabilities: an (n, len(classes_)) array whose rows sum to 1, where column j
-        is the probability of classes_[j].
+        probabilities: an (n, len(``classes_``)) array whose rows sum to 1, where column j
+        is the probability of the j-th entry of ``classes_``.
 
         :param X:
         :raises ValueError: If num_simulations is not a positive integer, or X is not 2D
@@ -599,9 +599,9 @@ class MixedModeEstimator(ClassifierMixin, BaseEstimator):
     def predict_proba(self, X):
         """
         Normalizes the full per-sample terminal distribution predict consumes into
-        probabilities: an (n, len(classes_)) array whose rows sum to 1, where column j
-        is the probability of classes_[j]. The simulated walks consume the trained
-        classifiers' probabilities through the graph's edges.
+        probabilities: an (n, len(``classes_``)) array whose rows sum to 1, where column j
+        is the probability of the j-th entry of ``classes_``. The simulated walks consume
+        the trained classifiers' probabilities through the graph's edges.
 
         :param X:
         :raises ValueError: If num_simulations is not a positive integer, or X is not 2D
