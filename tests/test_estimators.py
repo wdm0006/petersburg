@@ -5,16 +5,24 @@ and simulating an actual petersburg Graph) on small deterministic datasets.
 """
 
 import os
+import pickle
 import random
 import subprocess
 import sys
 import textwrap
 import unittest
+from functools import partial
 from unittest import mock
 
 import numpy as np
+import pytest
 from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV, KFold
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.utils.validation import check_is_fitted
 
 from petersburg import FrequencyEstimator, MixedModeEstimator
 from petersburg import graph as pg
@@ -140,7 +148,7 @@ class TestFrequencyEstimatorPredict(unittest.TestCase):
         est = FrequencyEstimator(num_simulations=5).fit(X, y)
 
         y_hat = est.predict(X)
-        self.assertEqual(y_hat.shape, (3, 1))
+        self.assertEqual(y_hat.shape, (3,))
         self.assertTrue((y_hat == 0).all())
 
     def test_predict_builds_graph_from_non_negative_count_matrix(self):
@@ -165,7 +173,7 @@ class TestFrequencyEstimatorPredict(unittest.TestCase):
         est = FrequencyEstimator(num_simulations=25).fit(X, y)
 
         y_hat = est.predict(X)
-        self.assertEqual(y_hat.shape, (4, 1))
+        self.assertEqual(y_hat.shape, (4,))
         self.assertTrue(set(y_hat.ravel()).issubset(_terminal_labels(est._categories)))
 
     def test_predict_round_trips_string_labels(self):
@@ -215,7 +223,7 @@ class TestMixedModeEstimatorFrequencyFallback(unittest.TestCase):
         est = MixedModeEstimator(num_simulations=5).fit(X, y)
 
         y_hat = est.predict(X)
-        self.assertEqual(y_hat.shape, (3, 1))
+        self.assertEqual(y_hat.shape, (3,))
         self.assertTrue((y_hat == 0).all())
 
 
@@ -230,7 +238,7 @@ class TestMixedModeEstimatorClassifierBacked(unittest.TestCase):
 
         source = est._categories.index((0, "apply"))
         terminal = est._categories.index((1, "approved"))
-        self.assertEqual(est._frequency_matrix[source, terminal], est._min_samples)
+        self.assertEqual(est._frequency_matrix[source, terminal], est.min_samples)
         self.assertIsNone(est._clf_matrix[source][terminal])
 
     def test_classifier_training_value_error_propagates(self):
@@ -249,8 +257,8 @@ class TestMixedModeEstimatorClassifierBacked(unittest.TestCase):
         i10 = est._categories.index((1, 0))
         i11 = est._categories.index((1, 1))
 
-        # Both transitions meet the >= _min_samples (100) threshold, so both are modeled.
-        self.assertEqual(est._min_samples, 100)
+        # Both transitions meet the >= min_samples (100) threshold, so both are modeled.
+        self.assertEqual(est.min_samples, 100)
         self.assertIsNotNone(est._clf_matrix[i00][i10])
         self.assertIsNotNone(est._clf_matrix[i00][i11])
         # The terminal nodes never originate a transition, so they train nothing.
@@ -265,8 +273,8 @@ class TestMixedModeEstimatorClassifierBacked(unittest.TestCase):
         # and each prediction is that terminal's fitted label.
         random.seed(1)
         np.random.seed(1)
-        self.assertEqual(est.predict(np.array([[0.0]]))[0, 0], 0)
-        self.assertEqual(est.predict(np.array([[10.0]]))[0, 0], 1)
+        self.assertEqual(est.predict(np.array([[0.0]]))[0], 0)
+        self.assertEqual(est.predict(np.array([[10.0]]))[0], 1)
 
     def test_predict_returns_string_label_and_rejects_the_synthetic_root(self):
         y = np.array([["apply", "approved"]] * 3)
@@ -298,7 +306,7 @@ class TestEstimatorScore(unittest.TestCase):
                 self.assertEqual(est.score(X, incorrect), 0.0)
 
                 y_hat = est.predict(X)
-                self.assertEqual(y_hat.shape, (3, 1))
+                self.assertEqual(y_hat.shape, (3,))
                 self.assertEqual(y_hat.dtype, object)
                 self.assertEqual(y_hat.ravel().tolist(), ["approved"] * 3)
 
@@ -404,7 +412,7 @@ class TestEstimatorPathTargetValidation(unittest.TestCase):
                 self.assertEqual(_terminal_labels(est._categories), terminals)
 
                 y_hat = est.predict(X)
-                self.assertEqual(y_hat.shape, (3, 1))
+                self.assertEqual(y_hat.shape, (3,))
                 self.assertTrue(set(y_hat.ravel().tolist()) <= terminals)
 
     def test_list_of_lists_target_is_accepted(self):
@@ -455,7 +463,7 @@ class TestEstimatorFeatureMatrixValidation(unittest.TestCase):
                 expected = est.predict(X)
                 predicted = est.predict(X.tolist())
 
-                self.assertEqual(predicted.shape, (3, 1))
+                self.assertEqual(predicted.shape, (3,))
                 self.assertEqual(predicted.dtype, object)
                 self.assertEqual(predicted.ravel().tolist(), expected.ravel().tolist())
                 self.assertEqual(est.score(X.tolist(), y), est.score(X, y))
@@ -683,13 +691,12 @@ class TestEstimatorReproducibility(unittest.TestCase):
         self.assertTrue(trained)
         self.assertTrue(all(clf.random_state == 7 for clf in trained))
 
-        # The seed is threaded in for the call only; _clf_args is left as the class set it.
-        self.assertEqual(est._clf_args, {})
+        # The seed is threaded in for the call only; clf_args stays as __init__ set it.
+        self.assertIsNone(est.clf_args)
 
     def test_mixed_mode_keeps_an_explicit_classifier_seed(self):
         X, y = _classifier_training_data()
-        est = MixedModeEstimator(random_state=7)
-        est._clf_args = {"random_state": 99}
+        est = MixedModeEstimator(random_state=7, clf_args={"random_state": 99})
         est.fit(X, y)
 
         trained = [clf for row in est._clf_matrix for clf in row if clf is not None]
@@ -779,6 +786,457 @@ class TestEstimatorSimulationCountValidation(unittest.TestCase):
 
             predictions = estimator.predict(self.X)
 
-            self.assertEqual(predictions.shape, (3, 1))
+            self.assertEqual(predictions.shape, (3,))
             self.assertEqual(predictions.dtype, object)
             self.assertTrue(set(predictions.ravel().tolist()) <= {"win", "lose"})
+
+
+class TestPredictProba(unittest.TestCase):
+    """predict_proba exposes the per-sample terminal distribution predict consumes."""
+
+    def test_single_terminal_distribution_is_one_hot(self):
+        X = np.zeros((3, 2))
+        y = np.array([[0, 0], [0, 0], [0, 0]])
+
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            with self.subTest(estimator=cls.__name__):
+                proba = cls(num_simulations=5).fit(X, y).predict_proba(X)
+
+                self.assertEqual(proba.shape, (3, 1))
+                self.assertTrue((proba == 1.0).all())
+
+    def test_rows_sum_to_one_and_columns_match_classes(self):
+        X = np.array([[0.0], [0.1], [9.0], [9.5]])
+        y = np.array([["a", "x"], ["a", "x"], ["a", "y"], ["a", "y"]])
+
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            with self.subTest(estimator=cls.__name__):
+                est = cls(num_simulations=25, random_state=7).fit(X, y)
+
+                proba = est.predict_proba(X)
+
+                self.assertEqual(proba.shape, (4, len(est.classes_)))
+                self.assertTrue(np.allclose(proba.sum(axis=1), 1.0))
+                # Both terminals are reachable, so no column is dead.
+                self.assertTrue((proba.min(axis=0) > 0.0).all())
+
+    def test_predict_matches_the_distribution_argmax_under_a_seed(self):
+        X = np.array([[0.0], [0.1], [9.0], [9.5]])
+        y = np.array([["a", "x"], ["a", "x"], ["a", "y"], ["a", "y"]])
+
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            with self.subTest(estimator=cls.__name__):
+                est = cls(num_simulations=25, random_state=7).fit(X, y)
+
+                argmax_labels = est.classes_[est.predict_proba(X).argmax(axis=1)]
+
+                self.assertEqual(argmax_labels.tolist(), est.predict(X).tolist())
+
+    def test_classifier_backed_distributions_are_feature_dependent(self):
+        X, y = _classifier_training_data()
+        est = MixedModeEstimator(num_simulations=50, random_state=7).fit(X, y)
+
+        low = est.predict_proba(np.array([[0.0]]))[0]
+        high = est.predict_proba(np.array([[10.0]]))[0]
+
+        # classes_ orders the columns; the terminal labels here are ints 0 and 1.
+        terminal_one = list(est.classes_).index(1)
+
+        self.assertGreater(high[terminal_one], low[terminal_one])
+        self.assertGreater(low.sum() - low[terminal_one], high.sum() - high[terminal_one])
+
+    def test_predict_proba_requires_fitted_estimator(self):
+        X = np.array([[0.0], [9.0]])
+
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            with self.subTest(estimator=cls.__name__):
+                with self.assertRaises(NotFittedError):
+                    cls().predict_proba(X)
+
+    def test_predict_proba_validates_simulation_count_like_predict(self):
+        X = np.array([[0.0], [9.0]])
+        y = np.array([["a", "x"], ["a", "y"]])
+
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            with self.subTest(estimator=cls.__name__):
+                est = cls(num_simulations=0).fit(X, y)
+
+                with self.assertRaises(ValueError) as ctx:
+                    est.predict_proba(X)
+
+                self.assertIn("num_simulations", str(ctx.exception))
+
+
+class TestFittedAttributes(unittest.TestCase):
+    """classes_ and n_features_in_ follow the scikit-learn fitted-attribute convention."""
+
+    @staticmethod
+    def _data():
+        X = np.array([[0.0], [0.1], [9.0], [9.5]])
+        return X, np.array([["a", "x"], ["a", "x"], ["a", "y"], ["a", "y"]])
+
+    def test_classes_and_n_features_in_are_recorded_after_fit(self):
+        X, y = self._data()
+
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            with self.subTest(estimator=cls.__name__):
+                est = cls(num_simulations=5).fit(X, y)
+
+                self.assertEqual(list(est.classes_), ["x", "y"])
+                self.assertEqual(est.n_features_in_, 1)
+
+    def test_classes_follow_first_appearance_order(self):
+        X = np.zeros((3, 1))
+        y = np.array([["a", "late"], ["a", "early"], ["a", "early"]])
+
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            with self.subTest(estimator=cls.__name__):
+                est = cls(num_simulations=5).fit(X, y)
+
+                self.assertEqual(list(est.classes_), ["late", "early"])
+
+    def test_check_is_fitted_passes_after_fit_and_fails_before(self):
+        X, y = self._data()
+
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            with self.subTest(estimator=cls.__name__):
+                est = cls(num_simulations=5)
+
+                with self.assertRaises(NotFittedError):
+                    check_is_fitted(est)
+
+                est.fit(X, y)
+
+                check_is_fitted(est)
+
+    def test_fit_without_features_still_records_classes(self):
+        y = np.array([["a", "x"], ["a", "x"], ["a", "y"]])
+
+        est = FrequencyEstimator(num_simulations=5).fit(None, y)
+
+        self.assertEqual(list(est.classes_), ["x", "y"])
+        self.assertFalse(hasattr(est, "n_features_in_"))
+
+
+class TestMixedModePartialFitParity(unittest.TestCase):
+    """MixedModeEstimator.partial_fit matches FrequencyEstimator.partial_fit semantics."""
+
+    def test_unfitted_partial_fit_delegates_to_fit(self):
+        X = np.zeros((3, 1))
+        y = np.array([["a", "x"], ["a", "x"], ["a", "y"]])
+
+        est = MixedModeEstimator(num_simulations=5)
+        est.partial_fit(X, y)
+
+        self.assertEqual(_terminal_labels(est._categories), {"x", "y"})
+
+    def test_partial_fit_updates_transition_counts_after_fit(self):
+        X = np.zeros((3, 1))
+        y = np.array([["a", "x"], ["a", "x"], ["a", "y"]])
+
+        est = MixedModeEstimator(num_simulations=5).fit(X, y)
+        est.partial_fit(X, y)
+
+        # Three path transitions per pass, two passes.
+        self.assertEqual(est._frequency_matrix.sum(), 6)
+
+    def test_partial_fit_rejects_unseen_categories_like_frequency(self):
+        X = np.zeros((3, 1))
+        y = np.array([["a", "x"], ["a", "x"], ["a", "y"]])
+
+        frequency = FrequencyEstimator(num_simulations=5).fit(X, y)
+        mixed = MixedModeEstimator(num_simulations=5).fit(X, y)
+
+        with self.assertRaises(ValueError) as frequency_ctx:
+            frequency.partial_fit(X, np.array([["b", "x"]]))
+
+        with self.assertRaises(ValueError) as mixed_ctx:
+            mixed.partial_fit(X, np.array([["b", "x"]]))
+
+        # Same rule, same message, up to the class name that prefixes it.
+        self.assertIn("categories seen", str(frequency_ctx.exception))
+        self.assertEqual(
+            str(mixed_ctx.exception).replace("MixedModeEstimator", ""),
+            str(frequency_ctx.exception).replace("FrequencyEstimator", ""),
+        )
+
+    def test_partial_fit_never_retrains_transition_classifiers(self):
+        X, y = _classifier_training_data()
+        random.seed(1)
+        np.random.seed(1)
+
+        est = MixedModeEstimator().fit(X, y)
+        trained_before = [clf for row in est._clf_matrix for clf in row if clf is not None]
+        self.assertTrue(trained_before)
+
+        est.partial_fit(X, y)
+
+        trained_after = [clf for row in est._clf_matrix for clf in row if clf is not None]
+
+        self.assertTrue(all(a is b for a, b in zip(trained_before, trained_after)))
+
+
+class TestSklearnHyperparameterContract(unittest.TestCase):
+    """The MixedModeEstimator hyperparameters participate in the sklearn machinery."""
+
+    def test_get_params_reports_the_constructor_parameters(self):
+        params = MixedModeEstimator().get_params()
+
+        self.assertEqual(
+            set(params),
+            {"verbose", "num_simulations", "random_state", "min_samples", "clf", "clf_args"},
+        )
+        self.assertEqual(params["min_samples"], 100)
+        # sklearn's constructibility check forbids estimator instances as constructor
+        # defaults, so None is stored verbatim and resolves to LogisticRegression() at
+        # fit time (exercised in test_default_classifier_is_logistic_regression).
+        self.assertIsNone(params["clf"])
+        self.assertIsNone(params["clf_args"])
+
+    def test_set_params_updates_public_parameters(self):
+        est = MixedModeEstimator()
+
+        self.assertIs(est.set_params(min_samples=25, clf_args={"max_iter": 10}), est)
+        self.assertEqual(est.min_samples, 25)
+        self.assertEqual(est.clf_args, {"max_iter": 10})
+
+    def test_clone_round_trips_init_parameters(self):
+        est = MixedModeEstimator(
+            verbose=True,
+            num_simulations=3,
+            random_state=7,
+            min_samples=42,
+            clf=LogisticRegression(C=0.5),
+            clf_args={"max_iter": 200},
+        )
+
+        cloned = clone(est)
+
+        self.assertTrue(cloned.verbose)
+        self.assertEqual(cloned.num_simulations, 3)
+        self.assertEqual(cloned.random_state, 7)
+        self.assertEqual(cloned.min_samples, 42)
+        self.assertIsInstance(cloned.clf, LogisticRegression)
+        self.assertEqual(cloned.clf.C, 0.5)
+        self.assertIsNot(cloned.clf, est.clf)
+        self.assertEqual(cloned.clf_args, {"max_iter": 200})
+
+    def test_default_classifier_is_logistic_regression(self):
+        X, y = _classifier_training_data()
+        random.seed(1)
+        np.random.seed(1)
+
+        est = MixedModeEstimator().fit(X, y)
+        trained = [clf for row in est._clf_matrix for clf in row if clf is not None]
+
+        self.assertTrue(trained)
+        self.assertTrue(all(isinstance(clf, LogisticRegression) for clf in trained))
+
+    def test_fit_leaves_constructor_parameters_untouched(self):
+        X, y = _classifier_training_data()
+        est = MixedModeEstimator(num_simulations=5, random_state=7, min_samples=100).fit(X, y)
+
+        self.assertEqual(est.num_simulations, 5)
+        self.assertEqual(est.random_state, 7)
+        self.assertEqual(est.min_samples, 100)
+        self.assertIsNone(est.clf)
+        self.assertIsNone(est.clf_args)
+
+    def test_grid_search_tunes_min_samples(self):
+        X, y = _classifier_training_data()
+        search = GridSearchCV(
+            MixedModeEstimator(num_simulations=5, random_state=7),
+            {"min_samples": [50, 100]},
+            cv=KFold(n_splits=2, shuffle=True, random_state=0),
+        )
+
+        search.fit(X, y)
+
+        self.assertIn(search.best_params_["min_samples"], [50, 100])
+        self.assertGreaterEqual(search.best_score_, 0.0)
+
+    def test_grid_search_tunes_the_nested_classifier_penalty(self):
+        X, y = _classifier_training_data()
+        search = GridSearchCV(
+            MixedModeEstimator(num_simulations=5, random_state=7, clf=LogisticRegression()),
+            {"clf__C": [0.1, 10.0]},
+            cv=KFold(n_splits=2, shuffle=True, random_state=0),
+        )
+
+        search.fit(X, y)
+
+        self.assertIn(search.best_params_["clf__C"], [0.1, 10.0])
+        self.assertGreaterEqual(search.best_score_, 0.0)
+
+    def test_grid_search_can_replace_the_whole_classifier(self):
+        # The blessed pattern for searching over the classifier itself when the
+        # constructor default is None.
+        X, y = _classifier_training_data()
+        search = GridSearchCV(
+            MixedModeEstimator(num_simulations=5, random_state=7),
+            [{"clf": [LogisticRegression(C=0.1), LogisticRegression(C=10.0)]}],
+            cv=KFold(n_splits=2, shuffle=True, random_state=0),
+        )
+
+        search.fit(X, y)
+
+        self.assertIsNotNone(search.best_estimator_)
+        self.assertGreaterEqual(search.best_score_, 0.0)
+
+    def test_pipeline_fit_and_predict_smoke_test(self):
+        X, y = _classifier_training_data()
+
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            with self.subTest(estimator=cls.__name__):
+                pipe = Pipeline(
+                    [
+                        ("scale", StandardScaler()),
+                        ("est", cls(num_simulations=5, random_state=7)),
+                    ]
+                )
+                pipe.fit(X, y)
+
+                self.assertEqual(pipe.predict(X[:5]).shape, (5,))
+                self.assertEqual(pipe.predict_proba(X[:5]).shape, (5, len(pipe.classes_)))
+
+    def test_pipeline_can_override_nested_estimator_parameters(self):
+        X, y = _classifier_training_data()
+        pipe = Pipeline(
+            [
+                (
+                    "est",
+                    MixedModeEstimator(num_simulations=5, random_state=7, clf=LogisticRegression()),
+                ),
+            ]
+        )
+        pipe.set_params(est__clf__C=0.5)
+
+        pipe.fit(X, y)
+
+        self.assertEqual(pipe.predict(X[:3]).shape, (3,))
+
+
+class TestSkippedCheckIntentCoverage(unittest.TestCase):
+    """Path-target equivalents for the sklearn checks skipped on the 1-D y harness."""
+
+    @staticmethod
+    def _data():
+        X = np.array([[0.0], [0.1], [9.0], [9.5]])
+        return X, np.array([["a", "x"], ["a", "x"], ["a", "y"], ["a", "y"]])
+
+    def test_pickle_round_trip_preserves_predictions(self):
+        X, y = self._data()
+
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            with self.subTest(estimator=cls.__name__):
+                est = cls(num_simulations=5, random_state=7).fit(X, y)
+                restored = pickle.loads(pickle.dumps(est))
+
+                np.testing.assert_array_equal(restored.predict(X), est.predict(X))
+
+    def test_fit_is_idempotent_under_a_fixed_seed(self):
+        X, y = self._data()
+
+        for cls in (FrequencyEstimator, MixedModeEstimator):
+            with self.subTest(estimator=cls.__name__):
+                once = cls(num_simulations=5, random_state=7).fit(X, y)
+                twice = cls(num_simulations=5, random_state=7).fit(X, y).fit(X, y)
+
+                np.testing.assert_array_equal(twice.predict(X), once.predict(X))
+
+
+# Written justifications for the estimator checks that cannot apply to these estimators.
+# Their contract differs from generic scikit-learn classifiers in exactly three ways:
+# fit consumes a 2D multi-column path target y (not a 1-D y); every y value is a
+# discrete category, so any value -- float, string, or non-finite -- is a legal label;
+# and features are read only through classifier-backed edges (FrequencyEstimator
+# ignores X entirely). Where a check's intent survives those differences, an equivalent
+# test built on real path targets lives in this module and is named in the reason.
+_SKLEARN_CHECK_SKIP_REASONS = {
+    "check_fit_score_takes_y": "the harness calls fit with a 1-D y, which the 2D path-target contract rejects before signatures are exercised; returning self from fit is exercised by every chained .fit(...) call in this module",
+    "check_estimators_fit_returns_self": "the harness fits a 1-D y, rejected by the 2D path-target contract; returning self is exercised by every chained .fit(...) call in this module",
+    "check_estimators_overwrite_params": "the harness fits a 1-D y, rejected by the 2D path-target contract; constructor parameters staying untouched is covered by test_fit_leaves_constructor_parameters_untouched",
+    "check_dont_overwrite_parameters": "the harness fits a 1-D y, rejected by the 2D path-target contract; constructor parameters staying untouched is covered by test_fit_leaves_constructor_parameters_untouched",
+    "check_dict_unchanged": "the harness fits a 1-D y, rejected by the 2D path-target contract; fit never mutates or retains caller inputs, and dict features are not read at all",
+    "check_readonly_memmap_input": "the harness fits a read-only memmap alongside a 1-D y, which the 2D path-target contract rejects",
+    "check_n_features_in_after_fitting": "the harness fits a 1-D y, rejected by the 2D path-target contract; n_features_in_ recording is covered by test_classes_and_n_features_in_are_recorded_after_fit",
+    "check_n_features_in": "the harness fits a 1-D y, rejected by the 2D path-target contract; n_features_in_ recording is covered by test_classes_and_n_features_in_are_recorded_after_fit",
+    "check_fit_check_is_fitted": "the harness fits a 1-D y, rejected by the 2D path-target contract; check_is_fitted behavior is covered by test_check_is_fitted_passes_after_fit_and_fails_before",
+    "check_fit_idempotent": "the harness fits a 1-D y, rejected by the 2D path-target contract; refit determinism under a fixed seed is covered by test_fit_is_idempotent_under_a_fixed_seed",
+    "check_estimators_pickle": "the harness fits a 1-D y, rejected by the 2D path-target contract; pickle round-trips are covered by test_pickle_round_trip_preserves_predictions",
+    "check_pipeline_consistency": "the harness fits a 1-D y, rejected by the 2D path-target contract; Pipeline behavior with path targets is covered by test_pipeline_fit_and_predict_smoke_test",
+    "check_estimators_dtypes": "the harness fits a 1-D y, rejected by the 2D path-target contract; feature dtypes only matter inside classifier-backed edges, which scikit-learn classifiers validate themselves",
+    "check_dtype_object": "the harness fits a 1-D y, rejected by the 2D path-target contract; feature dtypes only matter inside classifier-backed edges, which scikit-learn classifiers validate themselves",
+    "check_f_contiguous_array_estimator": "the harness fits a 1-D y, rejected by the 2D path-target contract; F-ordered inputs are converted with np.asarray before any use",
+    "check_classifier_data_not_an_array": "the harness fits a 1-D y, rejected by the 2D path-target contract; list-of-lists features are covered by test_predict_and_score_accept_a_list_of_lists_feature_matrix",
+    "check_classifiers_classes": "the harness fits a 1-D y, rejected by the 2D path-target contract; classes_ population is covered by test_classes_and_n_features_in_are_recorded_after_fit",
+    "check_classifiers_train": "the harness fits a 1-D y, rejected by the 2D path-target contract; train-then-predict behavior is exercised by every predict-based test in this module",
+    "check_classifiers_one_label": "the harness fits a 1-D y, rejected by the 2D path-target contract; single-terminal targets are covered by test_predict_single_terminal_is_deterministic",
+    "check_supervised_y_2d": "the check requires supporting 1-D y before testing 2-D handling, but the path-target contract requires 2-D and rejects 1-D by design",
+    "check_methods_sample_order_invariance": "the harness drives predict and score with a 1-D y, rejected by the 2D path-target contract",
+    "check_methods_subset_invariance": "the harness drives predict and score with a 1-D y, rejected by the 2D path-target contract",
+    "check_fit2d_predict1d": "the harness fits a 1-D y, rejected by the 2D path-target contract; rejecting 1-D feature matrices at predict is covered by test_predict_rejects_a_feature_matrix_that_is_not_2d",
+    "check_requires_y_none": "the path-target contract requires y on every call, so y=None is rejected by design, and the harness also fits with a 1-D y in its remaining steps",
+    "check_fit2d_1sample": "the harness's 1-D y is rejected before sample counts matter, and one-row path targets are themselves legal fits that must not raise",
+    "check_fit2d_1feature": "the harness's 1-D y is rejected before feature counts matter, and single-feature path targets are themselves legal fits that must not raise",
+    "check_positive_only_tag_during_fit": "the harness refits with negated 1-D y values, so the observed rejection is the path-target shape error rather than any positivity rule",
+    "check_estimators_partial_fit_n_features": "the harness drives partial_fit with a 1-D y and a classes array, and the path-target contract rejects the 1-D y; the classes kwarg itself is accepted for API compatibility",
+    "check_estimators_nan_inf": "path-target values are discrete categories, so non-finite y values are legal labels, and FrequencyEstimator never reads features; a blanket NaN/inf rejection would change documented behavior for inputs these estimators legitimately handle",
+    "check_complex_data": "complex features are not validated: FrequencyEstimator ignores X entirely and MixedModeEstimator only reads features through classifier-backed edges, while the harness also fits with a 1-D y",
+    "check_estimator_sparse_tag": "no sparse support is declared or implemented: FrequencyEstimator ignores X, MixedModeEstimator hands features to per-transition scikit-learn classifiers, and path targets are dense by construction",
+    "check_estimator_sparse_array": "no sparse support is declared or implemented: FrequencyEstimator ignores X, MixedModeEstimator hands features to per-transition scikit-learn classifiers, and path targets are dense by construction",
+    "check_estimator_sparse_matrix": "no sparse support is declared or implemented: FrequencyEstimator ignores X, MixedModeEstimator hands features to per-transition scikit-learn classifiers, and path targets are dense by construction",
+    "check_estimators_empty_data_messages": "empty path targets are rejected with the estimators' own documented wording; the check requires scikit-learn's exact '0 feature(s)/0 sample(s)' patterns, and validation messages are owned by the parallel error-hierarchy change",
+    "check_classifiers_regression_target": "path-target values are discrete categories by construction, so float values are legitimate labels rather than continuous targets and no 'Unknown label type' rejection exists",
+}
+
+
+def _estimator_checks(estimator):
+    """Yield every applicable check as (estimator, check) across scikit-learn versions."""
+
+    try:
+        from sklearn.utils.estimator_checks import estimator_checks_generator
+
+        yield from estimator_checks_generator(estimator)
+
+    except ImportError:
+        # scikit-learn < 1.6 exposes the same checks through a private generator whose
+        # entries take (name, estimator); bind the name the same way the public
+        # generator does.
+        from sklearn.utils.estimator_checks import _yield_all_checks
+
+        for check in _yield_all_checks(estimator):
+            func = getattr(check, "func", check)
+            if func is check:
+                check = partial(check, type(estimator).__name__)
+
+            yield estimator, check
+
+
+def _estimator_check_params():
+    """Build the parametrized check list with unique ids and justified skips."""
+
+    params = []
+    occurrences = {}
+
+    for cls in (FrequencyEstimator, MixedModeEstimator):
+        for _, check in _estimator_checks(cls()):
+            name = check.func.__name__
+            marks = []
+            if name in _SKLEARN_CHECK_SKIP_REASONS:
+                marks.append(pytest.mark.skip(reason=_SKLEARN_CHECK_SKIP_REASONS[name]))
+
+            key = (cls.__name__, name)
+            occurrences[key] = occurrences.get(key, 0) + 1
+            suffix = f"[{occurrences[key]}]" if occurrences[key] > 1 else ""
+
+            params.append(
+                pytest.param(cls, check, id=f"{cls.__name__}-{name}{suffix}", marks=marks)
+            )
+
+    return params
+
+
+@pytest.mark.parametrize("estimator_cls,check", _estimator_check_params())
+def test_sklearn_estimator_checks(estimator_cls, check):
+    check(estimator_cls())
