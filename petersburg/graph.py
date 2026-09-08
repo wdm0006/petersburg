@@ -47,6 +47,36 @@ def validate_sample_count(name, value):
         raise ValidationError(f"{name} must be a positive integer, got {value!r}")
 
 
+def _option_distribution_stats(outcomes, alpha):
+    """
+    Distribution statistics for one option's simulated per-walk outcome values.
+
+    All statistics live in outcome space, not loss space: ``var_alpha`` is the alpha-quantile
+    of the outcomes and ``cvar_alpha`` is the mean of the outcomes at or below that quantile,
+    so ``cvar_alpha <= var_alpha`` always holds.
+
+    :param outcomes: Per-walk outcome values for one option
+    :param alpha: Quantile level in [0, 1]
+    :return: dict of distribution statistics for the outcomes
+    """
+
+    samples = np.asarray(outcomes, dtype=float)
+    var_alpha = float(np.percentile(samples, alpha * 100.0))
+    return {
+        "std": float(np.std(samples, ddof=1)),
+        "percentiles": {
+            "p5": float(np.percentile(samples, 5)),
+            "p25": float(np.percentile(samples, 25)),
+            "p50": float(np.percentile(samples, 50)),
+            "p75": float(np.percentile(samples, 75)),
+            "p95": float(np.percentile(samples, 95)),
+        },
+        "p_loss": float(np.mean(samples < 0)),
+        "var_alpha": var_alpha,
+        "cvar_alpha": float(np.mean(samples[samples <= var_alpha])),
+    }
+
+
 @contextmanager
 def _perturbed_edge_weight(edge, edge_index, weight):
     """Temporarily install a transition weight, restoring the original on exit."""
@@ -370,7 +400,15 @@ class Graph:
             keys.append(node_id if occurrence == 0 else (node_id, occurrence))
         return keys
 
-    def get_options(self, iters=100, extended_stats=False, feature_vector=None):
+    def get_options(
+        self,
+        iters=100,
+        extended_stats=False,
+        feature_vector=None,
+        distribution=False,
+        alpha=0.05,
+        return_samples=False,
+    ):
         """
         Starts with each of the outcomes from the starting node seperately, to get the expected values (using iters
         iterations) for each of the initial options. Returns a dictionary of node_id: expected profit pairs.
@@ -385,15 +423,47 @@ class Graph:
         Each simulated option value includes one sample of the starting node's own payoff, so option
         values are on the same scale as :meth:`get_outcome`.
 
+        With ``distribution=True`` each option's value is instead the extended-stats dictionary
+        (mean, max, min, count) augmented with statistics of that option's simulated outcome
+        distribution: ``std`` (sample standard deviation), ``percentiles`` (p5/p25/p50/p75/p95 of
+        the outcome samples), ``p_loss`` (fraction of outcome samples strictly below zero),
+        ``var_alpha`` (the alpha-quantile of the outcomes, i.e. value at risk in outcome space) and
+        ``cvar_alpha`` (the mean of the outcomes at or below ``var_alpha``, i.e. expected shortfall
+        in outcome space, so ``cvar_alpha <= var_alpha``). With ``return_samples=True`` the
+        dictionary also carries ``samples``, the raw per-walk outcome values as a numpy array.
+
         :param iters:
         :param extended_stats:
         :param feature_vector: Features passed to classifier-weighted edges. Required when
             the graph uses classifiers for edge weights.
-        :raises ValidationError: If iters is not a positive integer
+        :param distribution: When True, report per-option outcome-distribution statistics. This
+            implies the extended-stats dictionary shape (mean, max, min, count are always present
+            alongside the distribution keys).
+        :param alpha: Quantile level in [0, 1] for ``var_alpha``/``cvar_alpha`` when
+            ``distribution`` is True; defaults to 0.05. Ignored when ``distribution`` is False.
+        :param return_samples: When True, include each option's raw per-walk outcome samples. Only
+            valid together with ``distribution=True``; passing it alone raises a ValidationError.
+        :raises ValidationError: If iters is not a positive integer; if return_samples is True
+            without distribution=True; or, when distribution is True, if iters is below 2
+            (distribution statistics need at least two samples) or alpha is outside [0, 1]
         :return:
         """
 
         validate_sample_count("iters", iters)
+
+        if return_samples and not distribution:
+            raise ValidationError("return_samples=True requires distribution=True")
+
+        if distribution:
+            if iters < 2:
+                raise ValidationError(
+                    f"distribution statistics require at least 2 iterations, got {iters!r}"
+                )
+            if not isinstance(alpha, numbers.Real):
+                raise ValidationError(f"alpha must be a number in [0, 1], got {alpha!r}")
+            alpha_level = float(alpha)
+            if not 0 <= alpha_level <= 1:
+                raise ValidationError(f"alpha must be in [0, 1], got {alpha!r}")
 
         choice = {}
         for key, outcome in zip(self._option_keys(), self.start_node.outcomes):
@@ -401,19 +471,20 @@ class Graph:
             for _ in range(iters):
                 payoff, cost = outcome[0].get_outcome(feature_vector=feature_vector)
                 out.append(payoff + self.start_node.sample_payoff() - cost - outcome[0].cost)
-            if not extended_stats:
+            if not extended_stats and not distribution:
                 choice.update({key: float(sum(out)) / len(out)})
             else:
-                choice.update(
-                    {
-                        key: {
-                            "mean": float(sum(out)) / len(out),
-                            "max": max(out),
-                            "min": min(out),
-                            "count": len(out),
-                        }
-                    }
-                )
+                stats = {
+                    "mean": float(sum(out)) / len(out),
+                    "max": max(out),
+                    "min": min(out),
+                    "count": len(out),
+                }
+                if distribution:
+                    stats.update(_option_distribution_stats(out, alpha_level))
+                    if return_samples:
+                        stats["samples"] = np.asarray(out, dtype=float)
+                choice.update({key: stats})
         return choice
 
     def to_tree(self):
