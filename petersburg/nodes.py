@@ -15,6 +15,7 @@ from numbers import Number
 import numpy as np
 
 from petersburg import Edge
+from petersburg.exceptions import ValidationError
 
 __author__ = "willmcginnis"
 
@@ -42,14 +43,14 @@ def _validate_transition_weights(node_id, choices):
         except TypeError:
             finite = False
         if not finite or weight < 0:
-            raise ValueError(
+            raise ValidationError(
                 f"Node {node_id} has invalid transition weight {weight!r} on the edge to node "
                 f"{edge.to_node.node_id}; transition weights must be finite and non-negative"
             )
         total += weight
 
     if not math.isfinite(total) or total <= 0:
-        raise ValueError(
+        raise ValidationError(
             f"Node {node_id} has transition weights totalling {total!r}; at least one outgoing "
             f"weight must be positive and the total must be finite"
         )
@@ -97,7 +98,7 @@ class Node:
     def scaled_payoff(self, factor):
         """Temporarily scale sampled payoffs by a positive factor."""
         if factor <= 0:
-            raise ValueError("payoff scale factor must be positive")
+            raise ValidationError("payoff scale factor must be positive")
 
         original_parameters = self._payoff_parameters()
         try:
