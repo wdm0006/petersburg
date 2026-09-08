@@ -4,137 +4,81 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Petersburg is a Python framework for modeling and analyzing probabilistic decision processes as directed acyclic graphs (DAGs). It enables simulation, prediction, and analysis of complex decision networks with uncertain outcomes.
+Petersburg is a Python framework for modeling and analyzing probabilistic decision processes as directed acyclic graphs (DAGs). It enables simulation, prediction, and analysis of complex decision networks with uncertain outcomes. Pure library: no web app, no services, no database, no required environment variables.
+
+## Stack
+
+- Python >= 3.9 (CI tests 3.9–3.14), packaged with setuptools (`pyproject.toml`)
+- uv for environment and dependency management (venv at `.venv/`)
+- Runtime deps: numpy, scikit-learn; dev extras: pytest, pytest-cov, ruff, black, mypy
+
+## Commands
+
+```bash
+# Install (first time)
+uv venv
+uv pip install -e ".[dev,examples]"
+
+# Tests
+uv run pytest                                # full suite with coverage
+uv run pytest --doctest-modules petersburg/  # doctests
+
+# Lint / format / types (ruff and black run in CI as hard gates; mypy is continue-on-error)
+uv run ruff check petersburg/ tests/ examples/
+uv run black --check petersburg/ tests/ examples/
+uv run mypy petersburg/
+
+# Examples — several call plt.show(); always set MPLBACKEND=Agg unattended
+MPLBACKEND=Agg uv run python examples/stpetersburg.py
+make examples        # basic examples
+make case-studies    # 4 case studies in examples/case_studies/
+
+# Docs (Sphinx sources in docs/)
+uv pip install -e ".[docs]"
+sphinx-build -b html docs docs/_build
+```
+
+Notes:
+
+- `examples/print.py` needs a system Graphviz (plus pygraphviz from the `[graphviz]` extra) for its `plot()` call.
+- `examples/stpetersburg_w_bankroll.py` simulates 10M games — takes minutes.
+
+## CI (GitHub Actions, `.github/workflows/ci.yml`)
+
+Three jobs run on every push/PR:
+
+1. **test** — Python 3.9–3.14 matrix: ruff, black, mypy (continue-on-error), pytest, doctests.
+2. **examples** — Python 3.12, installs only the `[examples]` extra (proving it is sufficient on its own), then runs an explicit allowlist of example scripts with `MPLBACKEND=Agg`. `examples/stpetersburg_w_bankroll.py` is excluded (10M-game simulation); `examples/print.py` runs, but its `plot()` image render needs a system Graphviz the runner does not have — the script catches that failure itself.
+3. **build** — `uv build` + `twine check`.
 
 ## Core Architecture
 
-### Graph Structure
+### Graph Structure ([graph.py](petersburg/graph.py))
 
-The framework models decision networks as DAGs with three key components:
+- `Graph.from_dict(d)` builds the graph from a dictionary spec (convention below); `Graph.to_dict()` serializes back — an exact round trip for numeric weights (classifier weights raise `ValidationError`).
+- `Graph.from_adj_matrix(A, labels=None, clf_matrix=None)`: a nonzero `A[row, col]` is an edge row → col, so `A[0, 1] = 1` builds the chain `-1 -> 0 -> 1`; a root node (ID `-1`) is added automatically and weights are normalized by row sums.
+- `get_outcome()` is one Monte Carlo walk (node payoffs minus edge costs); `get_options()` compares the start node's choices by expected value, with `extended_stats=True` and opt-in `distribution=True` outcome statistics (`std`, `percentiles`, `p_loss`, `var_alpha`, `cvar_alpha`, and raw `samples` with `return_samples=True`).
+- `analyze_sensitivity()` / `identify_critical_parameters()` / `print_sensitivity_report()` — automatic sensitivity analysis over edge weights, edge costs, and node payoffs.
+- `to_mermaid()` / `to_networkx()` / `plot()` — exports; `plot()` requires the `[graphviz]` extra (pygraphviz) plus a system Graphviz install.
 
-1. **Nodes** ([nodes.py](petersburg/nodes.py)) - Represent decision points with:
-   - `payoff`: Reward for reaching this node
-   - `outcomes`: List of possible edges (next steps) with associated weights
-   - Probabilistic selection of outcomes via `weighted_choice()`
+### Dictionary spec convention
 
-2. **Edges** ([edges.py](petersburg/edges.py)) - Represent transitions between nodes with:
-   - `cost`: Cost of traversing this edge
-   - `from_node` and `to_node`: Connected nodes
+Keys are node IDs; each node's `after` list is its **predecessors**. The node with an empty `after` list is where walks start. At each node, the next edge is chosen with probability proportional to `weight` across that node's outgoing edges (normalized to sum to 1); a weight on a node's single outgoing edge has no effect.
 
-3. **Graph** ([graph.py](petersburg/graph.py)) - Manages the entire network:
-   - `start_node`: Single entry point (required)
-   - `from_dict()`: Build graph from dictionary specification
-   - `from_adj_matrix()`: Build graph from adjacency matrix
-   - `get_outcome()`: Simulate single walk through the graph
-   - `get_options()`: Compare expected values of initial choices
+### Distribution node types ([nodes.py](petersburg/nodes.py))
 
-### Prediction Models
+`Node` (fixed payoff) plus `UniformNode`, `GaussianNode`, `LogNormalNode`, and `PowerLawNode`, selected with the `type` key and type-specific parameters (`min_payoff`/`max_payoff`, `mean`/`std`, `mu`/`sigma`, `scale`/`alpha`). Weighted choice lives in `weighted_choice()`.
 
-Two scikit-learn style estimators in [estimators.py](petersburg/estimators.py):
+### Estimators ([estimators.py](petersburg/estimators.py))
 
-1. **FrequencyEstimator** - Uses observed transition frequencies to build a graph and predict outcomes via simulation
-2. **MixedModeEstimator** - Combines frequency counts with logistic regression classifiers where sufficient training data exists (>= `_min_samples`)
+`FrequencyEstimator` (observed transition frequencies) and `MixedModeEstimator` (frequencies plus per-transition classifiers where at least `min_samples` observations exist) both follow the scikit-learn contract: hyperparameters in `__init__` stored verbatim (`min_samples`, `clf`, `clf_args` for the mixed mode), `classes_` and `n_features_in_` after `fit`, `predict()` returning a one-dimensional array of fitted terminal labels, `predict_proba()` with rows summing to 1, `partial_fit()` for incremental updates, and `clone()`-safe construction. `y` has one column per decision layer.
 
-Both estimators:
-- Accept `X` (features) and `y` (multi-column array where each column represents a layer in the decision hierarchy)
-- Build adjacency matrices from observed transitions
-- Convert matrices to petersburg graphs
-- Predict final outcomes through Monte Carlo simulation
+### Errors ([exceptions.py](petersburg/exceptions.py))
 
-### Edge Weights
+`PetersburgError` is the base class for every error the public API raises. `ValidationError` (also a `ValueError`) covers invalid input values; `SpecValidationError` (also an `AttributeError`) covers invalid graph specifications. Raise these (never bare `AttributeError`/`ValueError`) when adding new validation paths, so `except PetersburgError` keeps working as the single catch-all.
 
-Edge weights can be either:
-- Static floats/ints representing fixed probabilities
-- Trained classifiers that predict edge weights dynamically based on feature vectors
+## Conventions
 
-When a classifier is provided, `Node.get_weights()` calls `predict_proba()` to determine traversal probability.
-
-## Development Commands
-
-### Installation
-```bash
-pip install -r requirements.txt
-python setup.py install
-```
-
-### Testing
-```bash
-# Run tests with coverage (as configured in Travis CI)
-nosetests --with-coverage --cover-package=petersburg
-```
-
-### Running Examples
-```bash
-# Basic simulation examples
-python examples/stpetersburg.py
-python examples/necktie_paradox.py
-python examples/two_envelope_problem.py
-
-# Estimation examples
-python examples/estimation/estimator_example.py
-python examples/estimation/multimode_estimation.py
-```
-
-## Important Patterns
-
-### Building Graphs from Dictionaries
-
-Dictionary keys are node IDs. Each node specifies:
-- `payoff`: Reward value
-- `after`: List of edges, each with `node_id`, `cost`, and optional `weight`
-
-The starting node is identified by an empty `after` list.
-
-Example structure:
-```python
-{
-    1: {'payoff': 0, 'after': []},  # Starting node
-    2: {'payoff': 10, 'after': [{'node_id': 1, 'cost': 5, 'weight': 0.7}]}
-}
-```
-
-### Adjacency Matrix Convention
-
-Matrices follow the convention: a nonzero `A[row, col]` means an edge from `row` to `col`, so
-`A[0, 1] = 1` builds the chain `-1 -> 0 -> 1`. The `from_adj_matrix()` method:
-- Normalizes weights by row sums
-- Automatically adds a root node (ID: -1)
-- Supports optional `clf_matrix` for classifier-based edge weights
-
-### Feature Vectors in Prediction
-
-When calling `get_outcome(feature_vector)`, the vector propagates through the graph. At nodes with classifier-based edges, the feature vector is passed to `predict_proba()` to determine traversal probabilities dynamically.
-
-### Automatic Sensitivity Analysis
-
-The Graph class includes built-in sensitivity analysis to automatically identify which parameters have the most impact on outcomes:
-
-```python
-# Automatic sensitivity report
-g.print_sensitivity_report(num_simulations=1000, perturbation=0.10, top_n=5)
-
-# Programmatic access
-results = g.identify_critical_parameters(num_simulations=1000, perturbation=0.10, top_n=5)
-
-# Analyze specific parameter type
-analysis = g.analyze_sensitivity(parameter_type='edge_weights', num_simulations=1000)
-```
-
-This automatically tests ±10% changes in all edge weights, costs, and node payoffs, then ranks them by impact on expected value. Key features:
-- Tests all parameter types (edge weights, costs, payoffs)
-- Ranks by absolute sensitivity ($ change in EV) and elasticity (% change in EV)
-- Provides actionable recommendations on where to focus improvements
-- No manual parameter testing required
-
-See [examples/automatic_sensitivity_demo.py](examples/automatic_sensitivity_demo.py) for full demonstration.
-
-## Package Structure
-
-- [petersburg/](petersburg/) - Core package
-  - [__init__.py](petersburg/__init__.py) - Exports `Graph`, `Node`, `Edge`, `FrequencyEstimator`, `MixedModeEstimator`
-  - [graph.py](petersburg/graph.py) - Graph class and simulation logic
-  - [nodes.py](petersburg/nodes.py) - Node class and weighted choice logic
-  - [edges.py](petersburg/edges.py) - Edge class (simple wrapper)
-  - [estimators.py](petersburg/estimators.py) - Scikit-learn style prediction models
-- [examples/](examples/) - Demonstration scripts for various decision paradoxes
-- [tests/](tests/) - Test suite (currently minimal)
+- Every PR appends a CHANGELOG entry under `[Unreleased]` (Keep a Changelog format).
+- Conventional commit prefixes (`feat:`, `fix:`, `docs:`, ...).
+- New behavior ships with tests; run the full suite locally before pushing — CI is the final gate.

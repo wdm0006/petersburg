@@ -14,6 +14,7 @@ Pure library: no web app, no services, no ports, no required env vars.
 | Runtime deps | numpy, scikit-learn |
 | Dev extras | pytest, pytest-cov, ruff, black, mypy (`.[dev]`) |
 | Examples extras | networkx, matplotlib, pandas (`.[examples]` / `.[all]`) |
+| Docs extras | sphinx, sphinx-rtd-theme (`.[docs]` / `.[all]`); sources in `docs/` |
 | CI | GitHub Actions — `.github/workflows/ci.yml` (test + examples + build jobs) |
 
 ## Commands
@@ -36,6 +37,10 @@ uv run mypy petersburg/    # 36 pre-existing errors; CI runs this with continue-
 MPLBACKEND=Agg uv run python examples/stpetersburg.py
 make examples        # stpetersburg, two_envelope_problem, necktie_paradox
 make case-studies    # 4 case studies in examples/case_studies/
+
+# Docs (Sphinx; must stay warning-free)
+uv pip install -e ".[docs]"
+sphinx-build -b html docs docs/_build
 
 # Makefile also has: install, test, clean
 ```

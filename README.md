@@ -126,6 +126,16 @@ Installation
 pip install petersburg
 ```
 
+Optional extras:
+
+```bash
+pip install petersburg[visualization]  # networkx + matplotlib (to_networkx, plot)
+pip install petersburg[graphviz]       # pygraphviz for Graph.plot() — also needs a system Graphviz
+pip install petersburg[docs]           # sphinx toolchain for building docs/
+pip install petersburg[examples]       # pandas on top of visualization (example scripts)
+pip install petersburg[all]            # everything above plus dev tooling
+```
+
 ### From source (recommended for development)
 
 ```bash
@@ -149,21 +159,30 @@ Quick Start
 from petersburg import Graph
 
 # Build a simple decision graph
-g = Graph()
-g.from_dict({
-    0: {'payoff': 0, 'after': []},  # Terminal node
-    1: {'payoff': 100, 'after': [{'node_id': 0, 'cost': 10, 'weight': 1.0}]},  # Success
-    2: {'payoff': -50, 'after': [{'node_id': 0, 'cost': 5, 'weight': 1.0}]},   # Failure
-    3: {'payoff': 0, 'after': [
-        {'node_id': 1, 'cost': 0, 'weight': 0.3},  # 30% success
-        {'node_id': 2, 'cost': 0, 'weight': 0.7},  # 70% failure
-    ]},  # Starting node
-})
+spec = {
+    0: {'payoff': 0, 'after': []},  # Start node — the one with an empty 'after' list
+    1: {'payoff': 100, 'after': [{'node_id': 0, 'cost': 10, 'weight': 0.3}]},  # Success branch (30%)
+    2: {'payoff': -50, 'after': [{'node_id': 0, 'cost': 5, 'weight': 0.7}]},   # Failure branch (70%)
+    3: {'payoff': 0, 'after': [{'node_id': 1, 'cost': 0}, {'node_id': 2, 'cost': 0}]},  # Terminal node
+}
+g = Graph().from_dict(spec)
 
 # Run simulation
 outcomes = [g.get_outcome() for _ in range(10000)]
-print(f"Expected value: ${sum(outcomes)/len(outcomes):.2f}")
+print(f"Expected value: ${sum(outcomes)/len(outcomes):.2f}")  # ≈ -$11.50 = 0.3·(+90) + 0.7·(−55)
 ```
+
+How to read a graph dictionary:
+
+ * Keys are node IDs. A walk starts at the node whose `after` list is empty and ends
+   at a node that nothing follows.
+ * A node's `after` list is its **predecessors**: `2: {'after': [{'node_id': 1, ...}]}`
+   draws an edge `1 → 2`.
+ * At each node the walk picks among the edges leaving it with probability proportional
+   to each edge's `weight` (normalized to sum to 1). A weight on a node's single outgoing
+   edge has no effect — that edge is always taken. The 30/70 split in the example above
+   therefore lives on the edges *out of the start node* (declared in nodes 1 and 2's
+   `after` lists).
 
 ### Reproducibility
 
@@ -191,12 +210,15 @@ g.print_sensitivity_report(num_simulations=1000, perturbation=0.1, top_n=5)
 g.print_sensitivity_report(num_simulations=1000, perturbation=0.1, top_n=5, max_params=None)
 ```
 
-### Export to Mermaid Diagram
+### Visualizing the Graph
 
 ```python
-# Generate a Mermaid diagram for visualization
-mermaid_code = g.to_mermaid()
-print(mermaid_code)
+# Mermaid text export (no extra dependencies)
+print(g.to_mermaid())
+
+# Rendered image — needs the [graphviz] extra (pygraphviz) plus a system Graphviz
+# install, and networkx/matplotlib from the [visualization] extra
+g.plot("graph.png")
 ```
 
 ### Distribution-Based Node Types
@@ -270,6 +292,79 @@ outcomes = [g.get_outcome() for _ in range(1000)]
 
 See [examples/distribution_nodes_demo.py](examples/distribution_nodes_demo.py) for detailed examples.
 
+Comparing Initial Options
+=========================
+
+`get_options()` simulates the walk once per outgoing edge of the start node, so you can
+compare the initial choices by expected value:
+
+```python
+options = g.get_options(iters=10_000)
+# {1: 90.0, 2: -55.0}  # expected profit, keyed by each option's destination node id
+```
+
+Pass `extended_stats=True` for mean/max/min/count per option, or `distribution=True` for
+the full simulated outcome distribution of each option:
+
+```python
+options = g.get_options(iters=10_000, distribution=True, alpha=0.05)
+# each option carries mean/max/min/count plus the distribution keys:
+# {
+#     "std": 63.2,                       # sample standard deviation
+#     "percentiles": {"p5": ..., "p25": ..., "p50": ..., "p75": ..., "p95": ...},
+#     "p_loss": 0.184,                   # fraction of simulated outcomes < 0
+#     "var_alpha": -18.4,                # alpha-quantile of outcomes (value at risk, outcome space)
+#     "cvar_alpha": -31.7,               # mean of outcomes <= var_alpha (expected shortfall)
+# }
+```
+
+`alpha` (default 0.05) is the quantile level for `var_alpha`/`cvar_alpha`;
+`cvar_alpha <= var_alpha` always holds, because expected shortfall averages the outcomes at
+or below the quantile. `return_samples=True` (only valid together with `distribution=True`)
+also returns each option's raw per-walk outcome samples as a numpy array. Calls without the
+new kwargs keep the historical return shape.
+
+Error Handling
+==============
+
+Every error petersburg raises on invalid use subclasses `PetersburgError`:
+
+ * `ValidationError` (also a `ValueError`) — invalid input values: adjacency matrices,
+   sensitivity arguments, estimator targets and feature matrices, node payoffs, transition
+   weights, and argument combinations such as `get_options(return_samples=True)` without
+   `distribution=True`.
+ * `SpecValidationError` (a `ValidationError` that is also an `AttributeError`) — invalid
+   graph specifications: unrecognized node types, references to unknown nodes, cycles,
+   missing or multiple starting nodes, non-dict specifications.
+
+```python
+from petersburg import PetersburgError
+
+try:
+    Graph().from_dict({1: {'payoff': 1, 'after': [{'node_id': 999}]}})
+except PetersburgError as err:
+    print(f"invalid graph: {err}")
+```
+
+Existing `except ValueError` and `except AttributeError` handlers keep working unchanged;
+new code should catch `PetersburgError` or `ValidationError`.
+
+Serialization
+=============
+
+`Graph.to_dict()` produces exactly the dictionary `Graph.from_dict()` consumes, so graphs
+with numeric weights round-trip losslessly:
+
+```python
+reloaded = Graph().from_dict(g.to_dict())
+assert reloaded.to_dict() == g.to_dict()
+```
+
+Serialization covers nodes (including per-type distribution payoff parameters), edge costs,
+and numeric transition weights. Edges weighted by estimator objects (trained classifiers)
+are deliberately not serializable — `to_dict()` raises `ValidationError` for them; rebuild
+such graphs from a numeric-weight specification and attach the classifiers afterwards.
+
 Case Studies
 ============
 
@@ -335,6 +430,16 @@ make case-studies
 its `plot()` call, and `examples/stpetersburg_w_bankroll.py` simulates 10 million
 games, so it takes several minutes.
 
+Documentation
+=============
+
+The Sphinx sources live in [docs/](docs/). Build them locally with:
+
+```bash
+uv pip install -e ".[docs]"
+sphinx-build -b html docs docs/_build
+```
+
 Contributing
 ============
 
@@ -374,12 +479,52 @@ entrance fee is $10, and the game only has a maximum of 10,000 flips and is play
 Via simulation, the outcome of this is a profit of: $197,592,288.  This will, of course, vary depending on the run, but
 will approach infinity as the number of games goes to infinity, regardless of cost-to-play.
 
-Example Prediction
-==================
+Prediction (scikit-learn estimators)
+====================================
 
-There are two prediction objects, both of which are scikit-learn style classes. 
+There are two prediction objects, both scikit-learn style estimators that learn a decision
+graph from historical paths and predict outcomes through it:
 
- * MixedModeEstimator
- * FrequencyEstimator
- 
-Both have full working examples in the examples/estimation/* directory.
+ * `FrequencyEstimator` — transition frequencies observed in the data
+ * `MixedModeEstimator` — frequencies plus per-transition classifiers (logistic regression
+   by default) where enough training data exists
+
+Both follow the scikit-learn contract:
+
+```python
+import numpy as np
+from petersburg import MixedModeEstimator
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV
+
+est = MixedModeEstimator(min_samples=100, clf=LogisticRegression())
+est.fit(X, y)                  # y: one column per decision layer
+
+est.classes_                   # fitted terminal labels
+est.n_features_in_             # number of feature columns seen at fit
+
+proba = est.predict_proba(X)   # shape (n_samples, n_classes); rows sum to 1
+pred = est.predict(X)          # shape (n_samples,) — fitted terminal labels
+est.score(X, y)                # terminal-layer accuracy
+
+est.partial_fit(X_more, y_more)  # incremental update, both estimators
+
+# hyperparameters live in __init__, so they are tunable:
+search = GridSearchCV(
+    est, {"min_samples": [10, 50, 100], "clf__C": [0.1, 1.0, 10.0]}, cv=3
+)
+```
+
+Notes:
+
+ * `predict()` returns a one-dimensional label array `(n_samples,)` (it returned
+   `(n_samples, 1)` before 0.2.0).
+ * Columns of `predict_proba` follow `classes_`; with a seeded `random_state`, the modal
+   column always matches `predict()`.
+ * `FrequencyEstimator.fit(X=None, y)` fits without features; `n_features_in_` is absent
+   in that case.
+ * Hyperparameters (`min_samples`, `clf`, `clf_args`) are stored verbatim per the
+   scikit-learn parameter contract, so `get_params()`, `set_params()`, and `clone()` see
+   exactly what was passed.
+
+Full working examples in [examples/estimation/](examples/estimation/).

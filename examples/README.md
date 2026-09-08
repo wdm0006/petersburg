@@ -97,7 +97,7 @@ Demonstrates cost-based sensitivity analysis.
 ### [print.py](print.py)
 Demonstrates various output formats and visualization options.
 
-**Key concept**: Shows how to export graphs to different formats (Mermaid, DOT) and print sensitivity reports.
+**Key concept**: Shows how to export graphs to Mermaid, render an image with `g.plot()`, and print sensitivity reports. The `plot()` call needs the `[graphviz]` extra (pygraphviz) plus a system Graphviz install; without them the script notes the missing dependency and continues.
 
 **Run it**:
 ```bash
@@ -175,10 +175,10 @@ make case-studies     # Run comprehensive case studies
 2. Examine the corresponding analyze.py to see the implementation
 3. Copy the structure and adapt to your specific problem
 4. Use the framework features:
-   - `g.simulate()` - Monte Carlo simulation
+   - `g.get_outcome()` - Monte Carlo simulation (one walk per call)
+   - `g.get_options()` - Compare initial options, with opt-in outcome-distribution statistics
    - `g.print_sensitivity_report()` - Automatic sensitivity analysis
-   - `g.get_probability_of_success()` - Success rate estimation
-   - `g.mermaid()` - Visualization
+   - `g.to_mermaid()` - Mermaid diagram export
 
 ## Framework Features Demonstrated
 
