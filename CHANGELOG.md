@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Draft release notes for 0.3.0 (consolidated). This release makes the library's surface
+honest and keeps what the simulation already computes: both estimators meet the
+scikit-learn contract (`predict_proba`, fitted attributes, tunable constructor
+hyperparameters, one-dimensional `predict`), validation failures flow through a
+`PetersburgError` hierarchy, graphs round-trip through `to_dict()`/`from_dict()`, and
+`get_options()` can report per-option outcome distributions (std, percentiles, loss
+probability, VaR/CVaR, raw samples) instead of point estimates only. The documentation
+was overhauled alongside: the README quickstart's inverted node labels were repaired,
+the agent tooling guide (`CLAUDE.md`) was rewritten for the current uv/pytest workflow,
+phantom API references in `examples/README.md` were corrected, and a minimal Sphinx
+scaffold now builds under `docs/`.
+
 ### Added
 
 - Exception hierarchy for the public API. `petersburg.PetersburgError` is the base class for every
@@ -72,6 +84,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Dead `FrequencyEstimator._get_normalized_adj_matrix()` method, which had no callers.
+
+### Documentation
+
+- Repaired the README quickstart: the graph dictionary had its start and terminal nodes
+  labeled in reverse (the start node is the one with an empty `after` list), and the
+  30%/70% comments sat on edges where weights have no effect (a node's single outgoing
+  edge is always taken). The example now puts the weights on the start node's outgoing
+  edges, states the example's actual expected value (≈ −$11.50), and documents the
+  dictionary convention (empty `after` = start node, `after` lists are predecessors).
+- Rewrote `CLAUDE.md` for the current toolchain: it still instructed
+  `pip install -r requirements.txt` (file gone), `python setup.py install`, `nosetests`,
+  and Travis CI. It now documents the uv/pytest/ruff/black/mypy workflow, the GitHub
+  Actions CI jobs, and the same graph-dictionary and estimator conventions as
+  `.obvious/obvious.md`.
+- Fixed phantom API references in `examples/README.md`: `g.simulate()`,
+  `g.get_probability_of_success()`, and `g.mermaid()` do not exist (real equivalents:
+  `get_outcome()`, `get_options()`, `to_mermaid()`), and `print.py` was described as
+  exporting DOT, which is not a supported export.
+- Added a minimal Sphinx scaffold under `docs/`, matching the `docs` extra that
+  previously declared sphinx against a directory that did not exist;
+  `sphinx-build -b html docs docs/_build` builds clean.
+- Documented the wave's new surfaces in the README and the Sphinx docs: the error
+  hierarchy, the estimator scikit-learn contract (`predict_proba`, `classes_`,
+  `n_features_in_`, `partial_fit`, tunable constructor hyperparameters), `to_dict()`
+  serialization, `get_options()` outcome-distribution kwargs, and `Graph.plot()`'s
+  `[graphviz]` extra requirement (pygraphviz plus a system Graphviz install).
+- Verified the README badges against CI: the Python-versions badge already matches
+  `requires-python >=3.9` and the 3.9–3.14 CI matrix, and both badge URLs resolve
+  (no change needed).
 
 ## [0.2.0] - 2026-08-26
 
