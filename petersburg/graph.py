@@ -1170,6 +1170,13 @@ class Graph:
 
     def plot(self, filename):
         """
+        Renders the graph to an image file with graphviz layout.
+
+        Requires the optional graphviz extra (``pip install petersburg[graphviz]``, which also
+        needs a system Graphviz install) plus networkx and matplotlib from the visualization
+        extra.
+
+        :param filename: Path the rendered image is written to
         :return:
         """
 
@@ -1178,12 +1185,21 @@ class Graph:
 
     @staticmethod
     def graph_draw(g, filename):
+        # pygraphviz is probed first: it is the one plotting dependency no other extra pulls
+        # in, so it gets the specific [graphviz] hint rather than a generic dependency list.
         try:
-            import matplotlib.pyplot as plt  # noqa: F401
-            import networkx as nx  # noqa: F401
             import pygraphviz  # noqa: F401
         except ImportError as err:
-            raise ImportError("the plot function requires networkx and pygraphviz") from err
+            raise ImportError(
+                "the plot function requires pygraphviz, which also needs a system Graphviz "
+                "install; install it with the graphviz extra: pip install petersburg[graphviz]"
+            ) from err
+
+        try:
+            import matplotlib.pyplot as plt
+            import networkx as nx
+        except ImportError as err:
+            raise ImportError("the plot function requires networkx and matplotlib") from err
 
         # pure graphviz
         # A = nx.to_agraph(g)

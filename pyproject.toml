@@ -54,6 +54,9 @@ visualization = [
     "networkx>=2.6.0",
     "matplotlib>=3.5.0",
 ]
+graphviz = [
+    "pygraphviz>=1.10",
+]
 docs = [
     "sphinx>=5.0.0",
     "sphinx-rtd-theme>=1.0.0",
@@ -63,7 +66,7 @@ examples = [
     "pandas>=1.3.0",
 ]
 all = [
-    "petersburg[dev,visualization,docs,examples]",
+    "petersburg[dev,visualization,graphviz,docs,examples]",
 ]
 
 [project.urls]

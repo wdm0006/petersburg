@@ -437,19 +437,6 @@ class MixedModeEstimator(ClassifierMixin, BaseEstimator):
         except AttributeError:
             return {}
 
-    def _get_normalized_adj_matrix(self):
-        """
-        For each unique first index in the category labels, scale the frequency matrix (to get rough probabilities)
-
-        :return:
-        """
-
-        # find all of the unique layers in the problem (first index of category tuples)
-        row_sums = self._frequency_matrix.sum(axis=1)
-        normed_matrix = self._frequency_matrix / row_sums[:, np.newaxis]
-
-        return normed_matrix
-
     def _classifier_args(self):
         """
         The keyword arguments each per-transition classifier is constructed with.
