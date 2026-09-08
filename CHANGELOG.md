@@ -40,6 +40,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outcomes strictly below zero), `var_alpha` and `cvar_alpha` (value-at-risk and expected shortfall
   in outcome space, at quantile level `alpha`, default 0.05), and `return_samples=True` also returns
   each option's raw per-walk outcome samples. Default output is unchanged.
+- `Graph.to_dict()`, the inverse of `Graph.from_dict()`. Serializes nodes (including the per-type
+  distribution payoff parameters), edge costs, and numeric transition weights into the exact dict
+  format `from_dict()` consumes, with deterministic node and edge ordering shared with the other
+  graph exports. For any graph with numeric weights, the round trip is exact:
+  `Graph().from_dict(g.to_dict()).to_dict() == g.to_dict()`. Estimator-object (classifier) weights
+  are not round-trippable and raise `ValidationError` on serialize; rebuild such graphs with
+  numeric weights and attach classifiers after `from_dict()`.
+- `petersburg.__version__`, resolved from installed package metadata with a graceful fallback for
+  contexts where the package is not installed.
 
 ### Changed
 
@@ -55,6 +64,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolves to an empty argument dict. `GridSearchCV` can tune `min_samples` and nested
   classifier arguments such as `clf__C` (pass `clf=LogisticRegression()` when tuning nested
   keys, or search over `clf` values directly), and a `Pipeline` reaches them as `est__clf__C`.
+- `Graph.plot()` now raises an `ImportError` that names the new `[graphviz]` extra
+  (`pip install petersburg[graphviz]`) when pygraphviz is missing, instead of a generic dependency
+  list. pyproject declares the `[graphviz]` optional dependency group (pygraphviz), included in the
+  `all` extra.
+
+### Removed
+
+- Dead `FrequencyEstimator._get_normalized_adj_matrix()` method, which had no callers.
 
 ## [0.2.0] - 2026-08-26
 

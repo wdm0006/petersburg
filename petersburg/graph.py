@@ -257,6 +257,116 @@ class Graph:
 
         return self
 
+    def to_dict(self):
+        """
+        Serializes the graph to a dictionary in the exact format :meth:`from_dict` consumes.
+
+        ``Graph(random_state=s).from_dict(g.to_dict())`` rebuilds an equivalent graph, and for
+        any graph carrying numeric transition weights, edge costs, and fixed or
+        distribution-based payoffs the round trip is exact:
+        ``Graph().from_dict(g.to_dict()).to_dict() == g.to_dict()``.
+
+        Nodes are emitted with the start node first, then in ascending node id order, and each
+        node's ``after`` list is ordered deterministically, so repeated exports of the same
+        graph produce equal dicts.
+
+        Example:
+
+        >>> from petersburg import Graph
+        >>> g = Graph(random_state=42)
+        >>> _ = g.from_dict({
+        ...     1: {"payoff": 0, "after": []},
+        ...     2: {"payoff": 10, "after": [{"node_id": 1, "cost": 3}]},
+        ... })
+        >>> g.to_dict() == {
+        ...     1: {"type": "fixed", "payoff": 0, "after": []},
+        ...     2: {
+        ...         "type": "fixed",
+        ...         "payoff": 10,
+        ...         "after": [{"node_id": 1, "cost": 3, "weight": 1}],
+        ...     },
+        ... }
+        True
+
+        Estimator-object weights are NOT round-trippable: a dict spec has nowhere to carry a
+        fitted classifier. Serializing a graph whose edges carry classifier weights raises
+        :class:`ValidationError`; rebuild such graphs with numeric weights and attach the
+        classifiers (``add_outcome``) to the rebuilt graph after :meth:`from_dict`.
+
+        :return: dict of node specs keyed by node id, in :meth:`from_dict` format
+        :raises ValidationError: If the graph has no start node, or any edge carries an
+            estimator-object transition weight
+        """
+
+        if self.start_node is None:
+            raise ValidationError(
+                "to_dict requires a built graph; call from_dict() or from_adj_matrix() first"
+            )
+
+        spec = {}
+        for node in self._stable_node_order():
+            node_spec = self._payoff_spec(node)
+            node_spec["after"] = [
+                {
+                    "node_id": edge.from_node.node_id,
+                    "cost": edge.cost,
+                    "weight": self._serialization_weight(edge),
+                }
+                for edge in sorted(
+                    (e for e in self.edge_list() if e.to_node is node),
+                    key=self._stable_edge_sort_key,
+                )
+            ]
+            spec[node.node_id] = node_spec
+
+        return spec
+
+    @staticmethod
+    def _payoff_spec(node):
+        """
+        Build the payoff half of a node's from_dict spec: the ``type`` key plus the
+        parameters from_dict reads back for that type.
+
+        :param node: The node to spec
+        :return: dict with the type key and payoff parameters, no ``after`` list yet
+        """
+        if isinstance(node, UniformNode):
+            return {
+                "type": "uniform",
+                "min_payoff": node.min_payoff,
+                "max_payoff": node.max_payoff,
+            }
+        if isinstance(node, GaussianNode):
+            return {"type": "gaussian", "mean": node.mean, "std": node.std}
+        if isinstance(node, LogNormalNode):
+            return {"type": "lognormal", "mu": node.mu, "sigma": node.sigma}
+        if isinstance(node, PowerLawNode):
+            return {"type": "powerlaw", "scale": node.scale, "alpha": node.alpha}
+        return {"type": "fixed", "payoff": node.payoff}
+
+    @staticmethod
+    def _serialization_weight(edge):
+        """
+        Return the numeric transition weight to serialize for an edge.
+
+        Estimator-object weights have no dict-spec representation, so they are rejected
+        here rather than silently dropped or serialized by reference.
+
+        :param edge: The edge to weight
+        :return: The edge's numeric transition weight
+        :raises ValidationError: If the edge's weight is an estimator object
+        """
+        found = Graph._numeric_weight(edge)
+        if found is None:
+            raise ValidationError(
+                f"Cannot serialize the edge from node {edge.from_node.node_id} to node "
+                f"{edge.to_node.node_id}: its transition weight is an estimator object, and "
+                "estimator-object weights cannot round-trip through a dict spec. Rebuild the "
+                "graph with numeric weights, or attach classifiers to the rebuilt graph "
+                "after from_dict()."
+            )
+        return found[1]
+
     def from_adj_matrix(self, A, labels=None, clf_matrix=None):
         """
         Takes in a numpy adjacency matrix and forms a petersburg graph from it.
@@ -1060,6 +1170,13 @@ class Graph:
 
     def plot(self, filename):
         """
+        Renders the graph to an image file with graphviz layout.
+
+        Requires the optional graphviz extra (``pip install petersburg[graphviz]``, which also
+        needs a system Graphviz install) plus networkx and matplotlib from the visualization
+        extra.
+
+        :param filename: Path the rendered image is written to
         :return:
         """
 
@@ -1068,12 +1185,21 @@ class Graph:
 
     @staticmethod
     def graph_draw(g, filename):
+        # pygraphviz is probed first: it is the one plotting dependency no other extra pulls
+        # in, so it gets the specific [graphviz] hint rather than a generic dependency list.
         try:
-            import matplotlib.pyplot as plt  # noqa: F401
-            import networkx as nx  # noqa: F401
             import pygraphviz  # noqa: F401
         except ImportError as err:
-            raise ImportError("the plot function requires networkx and pygraphviz") from err
+            raise ImportError(
+                "the plot function requires pygraphviz, which also needs a system Graphviz "
+                "install; install it with the graphviz extra: pip install petersburg[graphviz]"
+            ) from err
+
+        try:
+            import matplotlib.pyplot as plt
+            import networkx as nx
+        except ImportError as err:
+            raise ImportError("the plot function requires networkx and matplotlib") from err
 
         # pure graphviz
         # A = nx.to_agraph(g)
