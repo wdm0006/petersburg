@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-08
+
 Draft release notes for 0.3.0 (consolidated). This release makes the library's surface
 honest and keeps what the simulation already computes: both estimators meet the
 scikit-learn contract (`predict_proba`, fitted attributes, tunable constructor

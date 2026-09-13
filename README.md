@@ -5,7 +5,7 @@ petersburg
 ![Python Versions](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)
 ![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)
 
-version number: 0.2.0
+version number: 0.3.0
 author: Will McGinnis
 
 Overview
