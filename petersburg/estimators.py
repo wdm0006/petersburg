@@ -142,6 +142,15 @@ def _terminal_indices(categories):
     return [idx for idx, (layer, _) in enumerate(categories) if layer == last_layer]
 
 
+def _terminal_column_map(categories, classes):
+    """Map fitted terminal node ids to their corresponding ``classes_`` columns."""
+
+    class_columns = {label: idx for idx, label in enumerate(classes)}
+    return {
+        node_id: class_columns[categories[node_id][1]] for node_id in _terminal_indices(categories)
+    }
+
+
 def _terminal_accuracy(estimator, X, y, sample_weight=None):
     """Return accuracy against the terminal column of a path target."""
 
@@ -179,17 +188,18 @@ def _record_fitted_attributes(estimator, X):
     """
     Sets the sklearn fitted-attribute contract on a freshly fitted estimator.
 
-    ``classes_`` holds the terminal-layer labels in first-appearance order (the order
-    predict_proba's columns follow), and ``n_features_in_`` records the width of the
-    fit-time feature matrix when one is supplied. Both live on fit -- never in
-    ``__init__`` -- so fitted state and unfitted state are cleanly separable.
+    ``classes_`` holds the sorted unique terminal-layer labels, and ``n_features_in_``
+    records the width of the fit-time feature matrix when one is supplied. Both live on
+    fit -- never in ``__init__`` -- so fitted state and unfitted state are cleanly
+    separable.
 
     :param estimator: the estimator that just finished fitting
     :param X: the feature matrix as passed to fit, if any
     """
 
     categories = estimator._categories
-    estimator.classes_ = np.asarray([categories[idx][1] for idx in _terminal_indices(categories)])
+    terminal_labels = [categories[idx][1] for idx in _terminal_indices(categories)]
+    estimator.classes_ = np.unique(terminal_labels)
 
     if X is not None:
         X = np.asarray(X)
@@ -368,14 +378,14 @@ class FrequencyEstimator(ClassifierMixin, BaseEstimator):
         X = _validate_feature_matrix(self, X)
 
         counters = _simulated_terminal_counters(self, X)
-        terminal = _terminal_indices(self._categories)
+        terminal_columns = _terminal_column_map(self._categories, self.classes_)
 
-        proba = np.zeros((X.shape[0], len(terminal)), dtype=float)
+        proba = np.zeros((X.shape[0], len(self.classes_)), dtype=float)
         for r_idx, sims in enumerate(counters):
             for node_id, count in sims.items():
                 try:
-                    proba[r_idx, terminal.index(node_id)] = count
-                except ValueError:
+                    proba[r_idx, terminal_columns[node_id]] = count
+                except KeyError:
                     raise ValueError(
                         f"Simulation ended on node id {node_id}, which is not a terminal "
                         f"category; predict_proba only covers the final decision layer."
@@ -613,14 +623,14 @@ class MixedModeEstimator(ClassifierMixin, BaseEstimator):
         X = _validate_feature_matrix(self, X)
 
         counters = _simulated_terminal_counters(self, X, clf_matrix=self._clf_matrix)
-        terminal = _terminal_indices(self._categories)
+        terminal_columns = _terminal_column_map(self._categories, self.classes_)
 
-        proba = np.zeros((X.shape[0], len(terminal)), dtype=float)
+        proba = np.zeros((X.shape[0], len(self.classes_)), dtype=float)
         for r_idx, sims in enumerate(counters):
             for node_id, count in sims.items():
                 try:
-                    proba[r_idx, terminal.index(node_id)] = count
-                except ValueError:
+                    proba[r_idx, terminal_columns[node_id]] = count
+                except KeyError:
                     raise ValueError(
                         f"Simulation ended on node id {node_id}, which is not a terminal "
                         f"category; predict_proba only covers the final decision layer."

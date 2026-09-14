@@ -11,6 +11,7 @@ import subprocess
 import sys
 import textwrap
 import unittest
+import warnings
 from functools import partial
 from unittest import mock
 
@@ -19,6 +20,7 @@ import pytest
 from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import log_loss
 from sklearn.model_selection import GridSearchCV, KFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -820,6 +822,39 @@ class TestPredictProba(unittest.TestCase):
                 # Both terminals are reachable, so no column is dead.
                 self.assertTrue((proba.min(axis=0) > 0.0).all())
 
+    def test_columns_follow_sorted_classes_with_distinct_probabilities(self):
+        labels = ["win"] * 270 + ["draw"] * 20 + ["lose"] * 10
+        X = np.zeros((len(labels), 1))
+        y = np.array([["start", label] for label in labels])
+
+        estimators = (
+            FrequencyEstimator(num_simulations=400, random_state=11),
+            MixedModeEstimator(num_simulations=400, random_state=11, min_samples=301),
+        )
+        for estimator in estimators:
+            with self.subTest(estimator=estimator.__class__.__name__):
+                estimator.fit(X, y)
+
+                proba = estimator.predict_proba(X[:1])[0]
+
+                self.assertEqual(estimator.classes_.tolist(), ["draw", "lose", "win"])
+                self.assertTrue(np.allclose(proba, [0.065, 0.0275, 0.9075]))
+
+    def test_log_loss_consumes_predict_proba_without_class_order_warning(self):
+        labels = ["win"] * 270 + ["draw"] * 20 + ["lose"] * 10
+        X = np.zeros((len(labels), 1))
+        y = np.array([["start", label] for label in labels])
+        estimator = FrequencyEstimator(num_simulations=400, random_state=11).fit(X, y)
+
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always")
+            loss = log_loss(
+                ["win"], estimator.predict_proba(X[:1]), labels=list(estimator.classes_)
+            )
+
+        self.assertFalse(any("ordered lexicographically" in str(w.message) for w in recorded))
+        self.assertAlmostEqual(loss, 0.0971, places=3)
+
     def test_predict_matches_the_distribution_argmax_under_a_seed(self):
         X = np.array([[0.0], [0.1], [9.0], [9.5]])
         y = np.array([["a", "x"], ["a", "x"], ["a", "y"], ["a", "y"]])
@@ -885,7 +920,7 @@ class TestFittedAttributes(unittest.TestCase):
                 self.assertEqual(list(est.classes_), ["x", "y"])
                 self.assertEqual(est.n_features_in_, 1)
 
-    def test_classes_follow_first_appearance_order(self):
+    def test_classes_are_sorted(self):
         X = np.zeros((3, 1))
         y = np.array([["a", "late"], ["a", "early"], ["a", "early"]])
 
@@ -893,7 +928,7 @@ class TestFittedAttributes(unittest.TestCase):
             with self.subTest(estimator=cls.__name__):
                 est = cls(num_simulations=5).fit(X, y)
 
-                self.assertEqual(list(est.classes_), ["late", "early"])
+                self.assertEqual(list(est.classes_), ["early", "late"])
 
     def test_check_is_fitted_passes_after_fit_and_fails_before(self):
         X, y = self._data()
