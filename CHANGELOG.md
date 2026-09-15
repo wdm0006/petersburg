@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Order estimator `classes_` and `predict_proba()` columns lexicographically, matching
+  scikit-learn's classifier convention and preventing metrics from associating probabilities
+  with the wrong labels.
+
 ## [0.3.0] - 2026-09-08
 
 Draft release notes for 0.3.0 (consolidated). This release makes the library's surface
