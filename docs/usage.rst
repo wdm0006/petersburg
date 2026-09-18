@@ -79,6 +79,20 @@ and node payoffs automatically and rank the parameters by impact on expected val
 
     g.print_sensitivity_report(num_simulations=1000, perturbation=0.1, top_n=5)
 
+Each parameter's baseline and both of its perturbation arms replay one shared stream of
+random draws (common random numbers), so a reported ``sensitivity`` measures the
+parameter's effect rather than the sum of three independent sampling errors. Costs and
+payoffs gain an exact consequence: ``sensitivity <= perturbation * abs(value)``. Edge
+weights have no comparable bound — perturbing a weight changes which edge is selected, at
+which point the paired streams legitimately diverge — so weight rankings still vary
+somewhat by seed on a heavy-tailed graph.
+
+The seed for that shared stream is reported as ``analysis_seed``. A graph built with a
+``random_state`` derives it from its own generator without consuming it, so seeded
+analyses repeat exactly; an unseeded graph draws a fresh one each call. Supplying a
+pre-computed ``baseline_ev`` requires supplying the ``analysis_seed`` it was drawn under,
+since a baseline from another stream would leave the arms unpaired.
+
 Error handling
 --------------
 
