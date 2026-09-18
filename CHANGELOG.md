@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Graph.from_adj_matrix()` no longer drops predecessor-free columns, so a matrix with more
+  than one source builds the graph its docstring describes: every column becomes a node and
+  every node without predecessors becomes a child of the synthetic root. Previously only
+  column 0 could be a source, and any other source was deleted from the specification,
+  making nodes that referenced it fail with a misleading unknown-predecessor error. The
+  `labels` parameter is retained for backward compatibility but no longer affects
+  construction.
 - Order estimator `classes_` and `predict_proba()` columns lexicographically, matching
   scikit-learn's classifier convention and preventing metrics from associating probabilities
   with the wrong labels.

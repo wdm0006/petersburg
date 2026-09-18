@@ -906,6 +906,51 @@ class TestFromAdjMatrix(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "real numeric"):
             Graph().from_adj_matrix(np.array([[0, "one"], [0, 0]]))
 
+    def test_multiple_sources_all_attach_to_the_root(self):
+        # Nodes 0 and 1 both have no predecessors and both lead to node 2.
+        g = Graph().from_adj_matrix(np.array([[0, 0, 1], [0, 0, 1], [0, 0, 0]]))
+
+        self.assertEqual({n.node_id for n in g.node_list()}, {-1, 0, 1, 2})
+        self.assertEqual(
+            {(e.from_node.node_id, e.to_node.node_id) for e in g.edge_list()},
+            {(-1, 0), (-1, 1), (0, 2), (1, 2)},
+        )
+        self.assertEqual(g.get_outcome(), 0)
+        self.assertEqual(g.get_outcome_node(), 2)
+
+    def test_disjoint_chains_both_attach_to_the_root(self):
+        # Two independent chains: 0 -> 1 and 2 -> 3.
+        A = np.array([[0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 1], [0, 0, 0, 0]])
+        g = Graph().from_adj_matrix(A)
+
+        self.assertEqual({n.node_id for n in g.node_list()}, {-1, 0, 1, 2, 3})
+        self.assertEqual(
+            {(e.from_node.node_id, e.to_node.node_id) for e in g.edge_list()},
+            {(-1, 0), (-1, 2), (0, 1), (2, 3)},
+        )
+        self.assertIn(g.get_outcome_node(), {1, 3})
+
+    def test_isolated_node_is_included_as_a_zero_weight_root_child(self):
+        # Node 2 is declared by the matrix but has neither incoming nor outgoing edges.
+        g = Graph().from_adj_matrix(np.array([[0, 1, 0], [0, 0, 0], [0, 0, 0]]))
+
+        self.assertEqual({n.node_id for n in g.node_list()}, {-1, 0, 1, 2})
+        root_weights = {edge.to_node.node_id: weight for edge, weight in g.start_node.outcomes}
+        self.assertEqual(root_weights[2], 0)
+        self.assertGreater(root_weights[0], 0)
+        self.assertEqual(g.get_outcome(), 0)
+        # A zero-weight edge is never selected, so the isolated node is unreachable.
+        self.assertEqual(g.get_outcome_node(), 1)
+
+    def test_all_zero_matrix_builds_then_fails_at_simulation(self):
+        # Unchanged from before source nodes were included: every root weight is zero, so
+        # construction succeeds and the weight total is only rejected when a walk starts.
+        g = Graph().from_adj_matrix(np.zeros((2, 2)))
+
+        self.assertEqual(g.start_node.node_id, -1)
+        with self.assertRaisesRegex(ValueError, "totalling 0.0"):
+            g.get_outcome()
+
 
 def _layered_spec(layers, width):
     """Build a from_dict spec: a start node followed by `layers` fully-connected layers of `width` nodes."""
