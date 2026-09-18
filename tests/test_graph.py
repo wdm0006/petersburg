@@ -1713,6 +1713,10 @@ class TestSensitivityRestorationOnFailure(unittest.TestCase):
     def _costs(self, graph):
         return sorted((edge.to_node.node_id, edge.cost) for edge in graph.edge_list())
 
+    def _rngs(self, graph):
+        """Each node's live generator, keyed by node id, for identity comparisons."""
+        return {node.node_id: node.rng for node in graph.node_list()}
+
     def _fail_on_walk(self, graph, walk_index):
         """Shadow get_outcome so the walk at walk_index raises, recording the live state."""
         real_get_outcome = graph.get_outcome
@@ -1724,6 +1728,7 @@ class TestSensitivityRestorationOnFailure(unittest.TestCase):
             if index == walk_index:
                 state["weights_at_failure"] = self._weights(graph)
                 state["costs_at_failure"] = self._costs(graph)
+                state["rngs_at_failure"] = self._rngs(graph)
                 raise _SimulationFailure("simulated failure")
             return real_get_outcome(*args, **kwargs)
 
@@ -1736,16 +1741,28 @@ class TestSensitivityRestorationOnFailure(unittest.TestCase):
         state = self._fail_on_walk(graph, walk_index)
 
         # baseline_ev is supplied so walk 0 is the first candidate's increase arm and
-        # walk 1 its decrease arm, with no baseline walks in between.
+        # walk 1 its decrease arm, with no baseline walks in between; analysis_seed goes
+        # with it, since a baseline without one is rejected.
         with self.assertRaises(_SimulationFailure):
             graph.analyze_sensitivity(
                 parameter_type=parameter_type,
                 num_simulations=1,
                 perturbation=0.1,
                 baseline_ev=0.0,
+                analysis_seed=17,
             )
 
         return graph, state
+
+    def _assert_rngs_installed_then_restored(self, graph, state, original):
+        """The arm ran on one shared analysis generator and every node got its own back."""
+        installed = state["rngs_at_failure"]
+        self.assertEqual(set(installed), set(original))
+        self.assertEqual(len(set(map(id, installed.values()))), 1)
+        for node_id, rng in installed.items():
+            self.assertIsNot(rng, original[node_id])
+        for node_id, rng in self._rngs(graph).items():
+            self.assertIs(rng, original[node_id])
 
     def test_edge_weight_increase_failure_restores_weight(self):
         original = self._weights(self._branching_graph())
@@ -1786,10 +1803,44 @@ class TestSensitivityRestorationOnFailure(unittest.TestCase):
                 num_simulations=1,
                 perturbation=0.1,
                 baseline_ev=0.0,
+                analysis_seed=17,
             )
 
         after = sorted((node.node_id, node.payoff) for node in graph.node_list())
         self.assertEqual(after, original)
+
+    def test_failure_restores_every_nodes_generator(self):
+        # The analysis installs one shared generator on every node so the arms replay one
+        # stream; recording it inside the raising shadow pins both the install and the
+        # restore, so this cannot pass on an implementation that never installs one.
+        for parameter_type in ("edge_weights", "costs", "payoffs"):
+            with self.subTest(parameter_type=parameter_type):
+                graph = self._branching_graph()
+                original = self._rngs(graph)
+                state = self._fail_on_walk(graph, 0)
+
+                with self.assertRaises(_SimulationFailure):
+                    graph.analyze_sensitivity(
+                        parameter_type=parameter_type,
+                        num_simulations=1,
+                        perturbation=0.1,
+                        baseline_ev=0.0,
+                        analysis_seed=17,
+                    )
+
+                self._assert_rngs_installed_then_restored(graph, state, original)
+
+    def test_baseline_failure_restores_every_nodes_generator(self):
+        # The baseline batch installs the same generator, and its failure path has to
+        # restore it too.
+        graph = self._branching_graph()
+        original = self._rngs(graph)
+        state = self._fail_on_walk(graph, 0)
+
+        with self.assertRaises(_SimulationFailure):
+            graph.analyze_sensitivity(parameter_type="costs", num_simulations=1)
+
+        self._assert_rngs_installed_then_restored(graph, state, original)
 
 
 class TestElasticitySign(unittest.TestCase):
@@ -1860,6 +1911,220 @@ class TestElasticitySign(unittest.TestCase):
             self.assertAlmostEqual(param["elasticity"], param["sensitivity"] / baseline_ev)
 
 
+class TestSensitivityCommonRandomNumbers(unittest.TestCase):
+    """Baseline and perturbation arms replay one stream, so a result is the effect alone."""
+
+    PERTURBATION = 0.25
+    SEEDS = (0, 1, 2, 3, 4)
+
+    @staticmethod
+    def _spec():
+        """Two costed, payoff-bearing routes past one high-variance node.
+
+        Every cost and perturbation is a dyadic fraction, so ``cost * (1 + p) - cost``
+        equals ``p * cost`` exactly in binary and the bound below needs no tolerance. The
+        variance source is a zero-mean Gaussian, which the payoff candidate filter excludes
+        (``payoff != 0``) while it still supplies the outcome spread that swamps the small
+        fixed payoffs beside it.
+        """
+        return {
+            1: {"payoff": 0, "after": []},
+            2: {"payoff": 5, "after": [{"node_id": 1, "cost": 8, "weight": 1}]},
+            3: {"payoff": -3, "after": [{"node_id": 1, "cost": 16, "weight": 1}]},
+            4: {
+                "type": "gaussian",
+                "mean": 0,
+                "std": 500,
+                "after": [
+                    {"node_id": 2, "cost": 4, "weight": 1},
+                    {"node_id": 3, "cost": 4, "weight": 3},
+                ],
+            },
+            5: {
+                "payoff": 2,
+                "after": [
+                    {"node_id": 2, "cost": 4, "weight": 3},
+                    {"node_id": 3, "cost": 4, "weight": 1},
+                ],
+            },
+        }
+
+    def _graph(self, random_state):
+        return Graph(random_state=random_state).from_dict(self._spec())
+
+    def _analyze(self, graph, parameter_type, num_simulations=1000):
+        return graph.analyze_sensitivity(
+            parameter_type=parameter_type,
+            num_simulations=num_simulations,
+            perturbation=self.PERTURBATION,
+            max_params=None,
+        )
+
+    def test_cost_sensitivity_never_exceeds_the_analytic_bound(self):
+        # An edge cost never enters weighted_choice, so under one shared stream the two
+        # arms walk identical paths and increased_ev - baseline_ev is exactly
+        # -p * cost * (traversing walks / walks). That is bounded by p * cost with
+        # probability 1, which makes this a deterministic gate rather than a statistical one.
+        for seed in self.SEEDS:
+            analysis = self._analyze(self._graph(seed), "costs")
+            self.assertEqual(analysis["parameters_analyzed"], 6)
+            for result in analysis["results"]:
+                bound = self.PERTURBATION * abs(result["original_value"])
+                self.assertLessEqual(
+                    result["sensitivity"],
+                    bound,
+                    f"seed {seed}: {result['parameter']} exceeds its analytic bound",
+                )
+
+    def test_cost_sensitivity_matches_the_traversed_fraction(self):
+        # Edge 1 -> 3 has cost 16 and is one of two equally weighted first choices, so its
+        # sensitivity is p * cost * P(traverse) = 0.25 * 16 * 0.5 = 2.0.
+        for seed in self.SEEDS:
+            analysis = self._analyze(self._graph(seed), "costs", num_simulations=2000)
+            by_name = {r["parameter"]: r["sensitivity"] for r in analysis["results"]}
+            self.assertAlmostEqual(by_name["Edge 1→3 cost"], 2.0, delta=0.25)
+
+    def test_payoff_sensitivity_never_exceeds_the_analytic_bound(self):
+        # Scaling a fixed payoff v by (1 +/- p) shifts the expected value by
+        # p * v * P(node visited) and consumes no random draws, so the same exactness
+        # applies: every result sits at or below p * abs(payoff).
+        for seed in self.SEEDS:
+            analysis = self._analyze(self._graph(seed), "payoffs")
+            self.assertEqual(analysis["parameters_analyzed"], 3)
+            for result in analysis["results"]:
+                bound = self.PERTURBATION * abs(result["original_value"])
+                self.assertLessEqual(
+                    result["sensitivity"],
+                    bound,
+                    f"seed {seed}: {result['parameter']} exceeds its analytic bound",
+                )
+
+    def test_sibling_weights_pair_to_near_equal_sensitivity(self):
+        # Two outcomes of one node describe a single split, so perturbing either weight
+        # measures the same thing. The branches carry different payoffs, otherwise the
+        # split cannot move the expected value and both sensitivities are a vacuous zero.
+        spec = {
+            1: {"payoff": 0, "after": []},
+            2: {"payoff": 100, "after": [{"node_id": 1, "weight": 1}]},
+            3: {"payoff": 0, "after": [{"node_id": 1, "weight": 1}]},
+        }
+
+        for seed in self.SEEDS:
+            graph = Graph(random_state=seed).from_dict(spec)
+            analysis = graph.analyze_sensitivity(
+                parameter_type="edge_weights",
+                num_simulations=2000,
+                perturbation=self.PERTURBATION,
+                max_params=None,
+            )
+            first, second = (r["sensitivity"] for r in analysis["results"])
+            self.assertGreater(min(first, second), 1.0, f"seed {seed}: vacuous zero split")
+            self.assertLessEqual(
+                abs(first - second) / max(first, second),
+                0.07,
+                f"seed {seed}: siblings disagree about one split ({first} vs {second})",
+            )
+
+    def test_seeded_analyses_repeat_exactly(self):
+        graph = self._graph(11)
+
+        first = self._analyze(graph, "costs", num_simulations=200)
+        second = self._analyze(graph, "costs", num_simulations=200)
+
+        self.assertEqual(first["analysis_seed"], second["analysis_seed"])
+        self.assertEqual(
+            [(r["parameter"], r["sensitivity"]) for r in first["results"]],
+            [(r["parameter"], r["sensitivity"]) for r in second["results"]],
+        )
+
+    def test_unseeded_analyses_draw_a_fresh_stream(self):
+        # The equality test above passes on a hardcoded constant seed; this is the half
+        # that does not. Two unseeded graphs must not share one analysis stream.
+        first = Graph().from_dict(self._spec())
+        second = Graph().from_dict(self._spec())
+
+        first_analysis = self._analyze(first, "costs", num_simulations=200)
+        second_analysis = self._analyze(second, "costs", num_simulations=200)
+
+        self.assertNotEqual(first_analysis["analysis_seed"], second_analysis["analysis_seed"])
+        self.assertNotEqual(
+            [r["sensitivity"] for r in first_analysis["results"]],
+            [r["sensitivity"] for r in second_analysis["results"]],
+        )
+
+    def test_analysis_does_not_consume_the_graphs_own_stream(self):
+        # The analysis seed is derived from the graph's generator without advancing it,
+        # so a caller's simulations are unaffected by having run an analysis.
+        undisturbed = self._graph(3)
+        expected = [undisturbed.get_outcome() for _ in range(20)]
+
+        analyzed = self._graph(3)
+        self._analyze(analyzed, "costs", num_simulations=50)
+
+        self.assertEqual([analyzed.get_outcome() for _ in range(20)], expected)
+
+    def test_supplied_baseline_requires_the_analysis_seed(self):
+        graph = self._graph(0)
+
+        with self.assertRaises(ValueError) as ctx:
+            graph.analyze_sensitivity(parameter_type="costs", num_simulations=10, baseline_ev=12.5)
+
+        self.assertIn("analysis_seed", str(ctx.exception))
+
+    def test_supplied_baseline_and_seed_reproduce_an_unsupplied_run(self):
+        graph = self._graph(5)
+
+        computed = self._analyze(graph, "costs", num_simulations=200)
+        reused = graph.analyze_sensitivity(
+            parameter_type="costs",
+            num_simulations=200,
+            perturbation=self.PERTURBATION,
+            max_params=None,
+            baseline_ev=computed["baseline_ev"],
+            analysis_seed=computed["analysis_seed"],
+        )
+
+        self.assertEqual(
+            [(r["parameter"], r["sensitivity"]) for r in reused["results"]],
+            [(r["parameter"], r["sensitivity"]) for r in computed["results"]],
+        )
+
+    def test_critical_parameters_share_the_analysis_stream_with_their_arms(self):
+        graph = self._graph(9)
+
+        critical = graph.identify_critical_parameters(
+            num_simulations=200, perturbation=self.PERTURBATION, top_n=100, max_params=None
+        )
+
+        # Replaying each type under the reported baseline and seed must reproduce the
+        # merged table exactly; a baseline drawn outside the arms' stream could not.
+        replayed = {}
+        for parameter_type in ("edge_weights", "costs", "payoffs"):
+            analysis = graph.analyze_sensitivity(
+                parameter_type=parameter_type,
+                num_simulations=200,
+                perturbation=self.PERTURBATION,
+                max_params=None,
+                baseline_ev=critical["baseline_ev"],
+                analysis_seed=critical["analysis_seed"],
+            )
+            replayed.update({r["parameter"]: r["sensitivity"] for r in analysis["results"]})
+
+        self.assertEqual(len(replayed), critical["total_parameters_analyzed"])
+        for parameter in critical["top_parameters"]:
+            self.assertEqual(replayed[parameter["parameter"]], parameter["sensitivity"])
+
+    def test_cost_bound_holds_for_every_parameter_of_a_merged_report(self):
+        critical = self._graph(2).identify_critical_parameters(
+            num_simulations=1000, perturbation=self.PERTURBATION, top_n=100, max_params=None
+        )
+
+        for parameter in critical["top_parameters"]:
+            if parameter["parameter"].endswith(("cost", "payoff")):
+                bound = self.PERTURBATION * abs(parameter["original_value"])
+                self.assertLessEqual(parameter["sensitivity"], bound, parameter["parameter"])
+
+
 class TestSensitivityBaselineReuse(unittest.TestCase):
     """One Monte Carlo baseline is shared by every parameter type in a merged report."""
 
@@ -1910,6 +2175,7 @@ class TestSensitivityBaselineReuse(unittest.TestCase):
             perturbation=0.1,
             max_params=None,
             baseline_ev=self.SUPPLIED_BASELINE,
+            analysis_seed=23,
         )
 
         self.assertEqual(analysis["baseline_ev"], self.SUPPLIED_BASELINE)
@@ -2136,7 +2402,7 @@ class TestSampleCountValidation(unittest.TestCase):
         graph = self._branching_graph()
 
         with self.assertRaises(ValueError):
-            graph.analyze_sensitivity(num_simulations=0, baseline_ev=12.5)
+            graph.analyze_sensitivity(num_simulations=0, baseline_ev=12.5, analysis_seed=3)
 
     def test_identify_critical_parameters_rejects_non_positive_num_simulations(self):
         graph = self._branching_graph()
@@ -2166,7 +2432,7 @@ class TestSampleCountValidation(unittest.TestCase):
         def unexpected_baseline(*args, **kwargs):
             raise AssertionError("a baseline was estimated before num_simulations was validated")
 
-        graph._baseline_expected_value = unexpected_baseline
+        graph._paired_expected_value = unexpected_baseline
 
         with self.assertRaises(ValueError):
             graph.identify_critical_parameters(num_simulations=0)

@@ -27,6 +27,7 @@ from petersburg.nodes import (
 __author__ = "willmcginnis"
 
 SENSITIVITY_PARAMETER_TYPES = ("edge_weights", "costs", "payoffs")
+_MAX_ANALYSIS_SEED = 2**63
 NODE_TYPES = ("fixed", "uniform", "gaussian", "lognormal", "powerlaw")
 
 
@@ -98,6 +99,29 @@ def _perturbed_edge_cost(edge, cost):
         yield
     finally:
         edge.cost = original_cost
+
+
+@contextmanager
+def _common_random_numbers(nodes, seed):
+    """
+    Temporarily point every node at one freshly seeded generator, restoring each
+    node's original generator on exit.
+
+    Nodes hold a reference to whichever generator they were built with, so swapping
+    ``Graph.rng`` alone would not re-point them; the swap has to happen per node.
+
+    :param nodes: Nodes to re-point for the duration of the block
+    :param seed: Seed for the generator every node shares inside the block
+    """
+    rng = np.random.default_rng(seed)
+    originals = [(node, node.rng) for node in nodes]
+    try:
+        for node in nodes:
+            node.rng = rng
+        yield
+    finally:
+        for node, original in originals:
+            node.rng = original
 
 
 class Graph:
@@ -841,19 +865,43 @@ class Graph:
                 f"perturbation must be strictly between 0 and 1, got {perturbation}"
             )
 
-    def _baseline_expected_value(self, num_simulations):
+    def _analysis_seed(self):
         """
-        Estimate the unperturbed expected value by Monte Carlo simulation.
+        Pick the seed that pairs a sensitivity analysis's baseline with its arms.
+
+        A graph built with a ``random_state`` derives the seed from its own generator
+        without consuming it — the generator's state is saved and restored around the
+        draw — so repeated analyses of a seeded graph are reproducible and the caller's
+        simulation stream is left exactly where it was. An unseeded graph draws from
+        system entropy, so its arms are still paired but its analyses are not repeatable.
+
+        :return: Integer seed for one analysis's shared random-number stream
+        """
+        if self.rng is None:
+            return int(np.random.SeedSequence().generate_state(1, dtype=np.uint64)[0])
+
+        bit_generator = self.rng.bit_generator
+        state = bit_generator.state
+        try:
+            return int(self.rng.integers(_MAX_ANALYSIS_SEED))
+        finally:
+            bit_generator.state = state
+
+    def _paired_expected_value(self, num_simulations, analysis_seed):
+        """
+        Estimate an expected value over one batch of walks driven by ``analysis_seed``.
+
+        Every batch in an analysis replays the same stream of random draws (common random
+        numbers), so the difference between a perturbed batch and the baseline isolates the
+        parameter's effect instead of adding two independent sampling errors.
 
         :param num_simulations: Number of walks to average
+        :param analysis_seed: Seed shared by every batch in this analysis
         :return: Mean net profit over the simulated walks
         """
-        import numpy as np
-
-        baseline_outcomes = []
-        for _ in range(num_simulations):
-            baseline_outcomes.append(self.get_outcome())
-        return np.mean(baseline_outcomes)
+        with _common_random_numbers(self.node_list(), analysis_seed):
+            outcomes = [self.get_outcome() for _ in range(num_simulations)]
+        return np.mean(outcomes)
 
     def analyze_sensitivity(
         self,
@@ -862,6 +910,7 @@ class Graph:
         perturbation=0.1,
         max_params=10,
         baseline_ev=None,
+        analysis_seed=None,
     ):
         """
         Automatically analyze sensitivity of outcomes to graph parameters.
@@ -881,13 +930,19 @@ class Graph:
         :param perturbation: How much to vary parameters, strictly between 0 and 1 (e.g., 0.1 = ±10%)
         :param max_params: Maximum number of parameters to analyze, or None for no limit
         :param baseline_ev: Pre-computed baseline expected value to normalize against, or
-            None to estimate it here with ``num_simulations`` walks
+            None to estimate it here with ``num_simulations`` walks. A baseline drawn from
+            a different random stream than the arms would silently unpair them, so supplying
+            one requires supplying the ``analysis_seed`` it was drawn under.
+        :param analysis_seed: Seed for the random-number stream every batch replays, or None
+            to derive one (from the graph's own generator when it has one, otherwise from
+            system entropy). Reported back as ``analysis_seed`` so a caller reusing a baseline
+            can pass the matching seed.
         :return: Dictionary with sensitivity results sorted by impact
         :raises ValidationError: If parameter_type is not one of 'edge_weights', 'costs', or 'payoffs'
         :raises ValidationError: If perturbation is not strictly between 0 and 1
         :raises ValidationError: If num_simulations is not a positive integer
+        :raises ValidationError: If baseline_ev is supplied without analysis_seed
         """
-        import numpy as np
 
         if parameter_type not in SENSITIVITY_PARAMETER_TYPES:
             accepted = ", ".join(repr(name) for name in SENSITIVITY_PARAMETER_TYPES)
@@ -898,9 +953,21 @@ class Graph:
         self._validate_perturbation(perturbation)
         validate_sample_count("num_simulations", num_simulations)
 
-        # Get baseline expected value, unless the caller already has one
+        if baseline_ev is not None and analysis_seed is None:
+            raise ValidationError(
+                "baseline_ev requires the analysis_seed it was drawn under; a baseline from "
+                "another random stream leaves the perturbation arms unpaired. Pass the "
+                "analysis_seed reported alongside the baseline, or omit baseline_ev."
+            )
+
+        if analysis_seed is None:
+            analysis_seed = self._analysis_seed()
+
+        # Get baseline expected value, unless the caller already has one. Every batch below
+        # replays the same stream, so an arm's difference from the baseline is the
+        # parameter's effect rather than the sum of two independent sampling errors.
         if baseline_ev is None:
-            baseline_ev = self._baseline_expected_value(num_simulations)
+            baseline_ev = self._paired_expected_value(num_simulations, analysis_seed)
 
         sensitivity_results = []
         candidate_count = 0
@@ -918,17 +985,11 @@ class Graph:
             for edge, edge_index, original_weight in candidates[:max_params]:
                 # Test increased weight
                 with _perturbed_edge_weight(edge, edge_index, original_weight * (1 + perturbation)):
-                    increased_outcomes = []
-                    for _ in range(num_simulations):
-                        increased_outcomes.append(self.get_outcome())
-                    increased_ev = np.mean(increased_outcomes)
+                    increased_ev = self._paired_expected_value(num_simulations, analysis_seed)
 
                 # Test decreased weight
                 with _perturbed_edge_weight(edge, edge_index, original_weight * (1 - perturbation)):
-                    decreased_outcomes = []
-                    for _ in range(num_simulations):
-                        decreased_outcomes.append(self.get_outcome())
-                    decreased_ev = np.mean(decreased_outcomes)
+                    decreased_ev = self._paired_expected_value(num_simulations, analysis_seed)
 
                 # Calculate sensitivity (average absolute change in EV)
                 sensitivity = (
@@ -959,17 +1020,11 @@ class Graph:
 
                 # Test increased cost
                 with _perturbed_edge_cost(edge, original_cost * (1 + perturbation)):
-                    increased_outcomes = []
-                    for _ in range(num_simulations):
-                        increased_outcomes.append(self.get_outcome())
-                    increased_ev = np.mean(increased_outcomes)
+                    increased_ev = self._paired_expected_value(num_simulations, analysis_seed)
 
                 # Test decreased cost
                 with _perturbed_edge_cost(edge, original_cost * (1 - perturbation)):
-                    decreased_outcomes = []
-                    for _ in range(num_simulations):
-                        decreased_outcomes.append(self.get_outcome())
-                    decreased_ev = np.mean(decreased_outcomes)
+                    decreased_ev = self._paired_expected_value(num_simulations, analysis_seed)
 
                 sensitivity = (
                     abs(increased_ev - baseline_ev) + abs(decreased_ev - baseline_ev)
@@ -999,17 +1054,11 @@ class Graph:
 
                 # Test increased payoff
                 with node.scaled_payoff(1 + perturbation):
-                    increased_outcomes = []
-                    for _ in range(num_simulations):
-                        increased_outcomes.append(self.get_outcome())
-                    increased_ev = np.mean(increased_outcomes)
+                    increased_ev = self._paired_expected_value(num_simulations, analysis_seed)
 
                 # Test decreased payoff
                 with node.scaled_payoff(1 - perturbation):
-                    decreased_outcomes = []
-                    for _ in range(num_simulations):
-                        decreased_outcomes.append(self.get_outcome())
-                    decreased_ev = np.mean(decreased_outcomes)
+                    decreased_ev = self._paired_expected_value(num_simulations, analysis_seed)
 
                 sensitivity = (
                     abs(increased_ev - baseline_ev) + abs(decreased_ev - baseline_ev)
@@ -1033,6 +1082,7 @@ class Graph:
 
         return {
             "baseline_ev": baseline_ev,
+            "analysis_seed": analysis_seed,
             "parameter_type": parameter_type,
             "perturbation": perturbation,
             "max_params": max_params,
@@ -1053,6 +1103,8 @@ class Graph:
         The baseline expected value is estimated once and shared by all three analyses,
         so every elasticity in the merged table is normalized against the same number
         and the reported baseline does not depend on which type happened to rank first.
+        That shared baseline is drawn under the same random stream as the arms it is
+        compared against, so the pairing survives the sharing.
 
         :param num_simulations: Number of Monte Carlo simulations per parameter
         :param perturbation: How much to vary parameters (e.g., 0.1 = ±10%)
@@ -1065,7 +1117,8 @@ class Graph:
         """
         self._validate_perturbation(perturbation)
         validate_sample_count("num_simulations", num_simulations)
-        baseline_ev = self._baseline_expected_value(num_simulations)
+        analysis_seed = self._analysis_seed()
+        baseline_ev = self._paired_expected_value(num_simulations, analysis_seed)
 
         all_results = []
         total_candidates = 0
@@ -1078,6 +1131,7 @@ class Graph:
                 perturbation=perturbation,
                 max_params=max_params,
                 baseline_ev=baseline_ev,
+                analysis_seed=analysis_seed,
             )
             all_results.extend(analysis["results"])
             total_candidates += analysis["candidate_parameters"]
@@ -1090,6 +1144,7 @@ class Graph:
 
         return {
             "baseline_ev": baseline_ev,
+            "analysis_seed": analysis_seed,
             "max_params": max_params,
             "total_candidate_parameters": total_candidates,
             "total_parameters_analyzed": len(all_results),
