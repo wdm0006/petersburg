@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Sensitivity analysis now pairs its arms with common random numbers, so reported
+  magnitudes drop substantially and rankings will differ from 0.3.0 and earlier.**
+  `analyze_sensitivity()` previously drew its baseline and each perturbation arm from
+  three independent Monte Carlo samples, so every reported `sensitivity` was the true
+  effect plus a sampling-error term that did not shrink relative to it; on graphs with
+  meaningful outcome variance that term dominated and the ranked report was largely
+  noise. The baseline and both arms of every parameter now replay one shared stream of
+  random draws. Costs and payoffs gain an exact bound this way — an edge cost never
+  enters edge selection and a fixed payoff consumes no draws, so
+  `sensitivity <= perturbation * abs(value)` now holds with probability 1, where before
+  it was violated by up to three orders of magnitude. Edge-weight rankings improve in
+  magnitude but remain seed-dependent: perturbing a weight changes which edge is
+  selected, at which point the two streams legitimately diverge.
+- `analyze_sensitivity()` accepts and reports `analysis_seed`, the seed for that shared
+  stream. It is derived from the graph's own generator when it has one (without
+  consuming it, so seeded analyses repeat exactly and a caller's own stream is
+  undisturbed) and from system entropy otherwise. `identify_critical_parameters()`
+  threads one seed alongside its shared baseline, so its merged table stays comparable
+  across all three parameter types.
+- **Breaking:** passing `baseline_ev=` to `analyze_sensitivity()` without the matching
+  `analysis_seed=` now raises `ValidationError`. A baseline drawn under a different
+  stream than the arms silently reintroduces the unpaired estimator, so the pair is
+  required rather than assumed.
+
 ### Fixed
 
 - Order estimator `classes_` and `predict_proba()` columns lexicographically, matching

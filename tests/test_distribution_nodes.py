@@ -4,11 +4,22 @@ Tests for distribution-based node types.
 
 import math
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 
 from petersburg import GaussianNode, Graph, LogNormalNode, PowerLawNode, UniformNode
+
+
+def _patch_analysis_rng(**methods):
+    """Stand a spy in for the generator a sensitivity analysis installs on every node.
+
+    ``analyze_sensitivity`` gives every node one freshly seeded generator so its baseline
+    and both arms replay a single stream of draws, so patching the ``numpy.random``
+    module-level functions no longer observes anything.
+    """
+    return patch("numpy.random.default_rng", return_value=SimpleNamespace(**methods))
 
 
 class TestDistributionNodes(unittest.TestCase):
@@ -212,7 +223,7 @@ class TestPayoffSensitivity(unittest.TestCase):
             draws.append((low, high))
             return (low + high) / 2
 
-        with patch("numpy.random.uniform", side_effect=uniform):
+        with _patch_analysis_rng(uniform=uniform):
             node, result = self._analyze({"type": "uniform", "min_payoff": 10, "max_payoff": 20})
 
         self.assertEqual(draws, [(10, 20), (11, 22), (9, 18)])
@@ -227,7 +238,7 @@ class TestPayoffSensitivity(unittest.TestCase):
             draws.append((mean, std))
             return mean + std
 
-        with patch("numpy.random.normal", side_effect=normal):
+        with _patch_analysis_rng(normal=normal):
             node, result = self._analyze({"type": "gaussian", "mean": 100, "std": 10})
 
         expected_draws = [(100, 10), (110, 11), (90, 9)]
@@ -245,7 +256,7 @@ class TestPayoffSensitivity(unittest.TestCase):
             draws.append((mu, sigma))
             return math.exp(mu + sigma)
 
-        with patch("numpy.random.lognormal", side_effect=lognormal):
+        with _patch_analysis_rng(lognormal=lognormal):
             node, result = self._analyze({"type": "lognormal", "mu": 2, "sigma": 0.5})
 
         self.assertAlmostEqual(draws[1][0], 2 + math.log(1.1))
@@ -263,7 +274,7 @@ class TestPayoffSensitivity(unittest.TestCase):
             alphas.append(alpha)
             return 0.5
 
-        with patch("numpy.random.pareto", side_effect=pareto):
+        with _patch_analysis_rng(pareto=pareto):
             node, result = self._analyze({"type": "powerlaw", "scale": 10, "alpha": 3})
 
         self.assertEqual(alphas, [3, 3, 3])
@@ -275,7 +286,15 @@ class TestPayoffSensitivity(unittest.TestCase):
         graph = Graph().from_dict({1: {"type": "gaussian", "mean": 100, "std": 10, "after": []}})
         node = graph.start_node
 
-        with patch("numpy.random.normal", side_effect=[100, RuntimeError("draw failed")]):
+        draws = iter([100, 100])
+
+        def normal(mean, std):
+            try:
+                return next(draws)
+            except StopIteration:
+                raise RuntimeError("draw failed") from None
+
+        with _patch_analysis_rng(normal=normal):
             with self.assertRaisesRegex(RuntimeError, "draw failed"):
                 graph.analyze_sensitivity(
                     parameter_type="payoffs", num_simulations=1, perturbation=0.1
