@@ -402,8 +402,19 @@ class Graph:
 
         So ``A[0, 1] = 1`` builds the chain -1 -> 0 -> 1.
 
-        :param A:
-        :return:
+        Every column of ``A`` becomes a node, so a matrix may declare several predecessor-free
+        nodes and they all become children of the synthetic root. A node the matrix declares
+        with neither incoming nor outgoing edges is included too, as a zero-weight child of the
+        root; a zero weight beside a positive one is valid and simply never selected.
+
+        :param A: square, real, non-negative array-like of transition counts or weights, where
+            a nonzero, non-NaN ``A[r, c]`` is an edge r -> c and ``NaN`` marks an absent edge
+        :param labels: retained for backward compatibility and ignored. It no longer affects
+            construction: every column of ``A`` is included in the graph regardless.
+        :param clf_matrix: optional matrix of per-transition classifiers; a non-None
+            ``clf_matrix[r][c]`` replaces the numeric weight of edge r -> c with that
+            classifier, whose ``predict_proba`` is resolved at simulation time
+        :return: this graph, rebuilt from ``A``
         """
 
         A = np.asarray(A)
@@ -415,10 +426,6 @@ class Graph:
             raise ValidationError("Adjacency matrix entries must be finite or NaN")
         if np.any(A < 0):
             raise ValidationError("Adjacency matrix entries must be non-negative")
-
-        if labels is None:
-            labels = [(1, 1) for _ in range(A.shape[0])]
-            labels[0] = (0, 0)
 
         dict_spec = {}
         for c_idx in range(A.shape[1]):
@@ -463,8 +470,7 @@ class Graph:
                             }
                         )
 
-            if len(after) > 0 or labels[c_idx][0] == 0:
-                dict_spec[c_idx] = {"payoff": 0, "after": after}
+            dict_spec[c_idx] = {"payoff": 0, "after": after}
 
         # add in root node (super hacky)
         dict_spec[-1] = {"after": [], "payoff": 0}
