@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-03
+
+This release corrects three silent-wrong-answer bugs: sensitivity rankings that were mostly
+sampling noise, `from_adj_matrix` rejecting multi-source matrices, and `predict_proba`
+columns misaligned with `classes_` ordering. Sensitivity output changes materially, and
+`analyze_sensitivity(baseline_ev=...)` now requires `analysis_seed=`.
+
 ### Changed
 
 - **Sensitivity analysis now pairs its arms with common random numbers, so reported
