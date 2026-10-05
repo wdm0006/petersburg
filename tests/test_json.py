@@ -1,7 +1,6 @@
 import json
 import subprocess
 import sys
-import textwrap
 import unittest
 
 import numpy as np
@@ -80,13 +79,15 @@ class TestJsonDeterminism(unittest.TestCase):
         self.assertEqual(g.to_json(), g.to_json())
 
     def test_across_hash_seeds(self):
-        script = textwrap.dedent("""
-            from petersburg.graph import Graph
-            spec = {"a": {"after": []}}
-            for name in ["b", "c", "d", "e", "f"]:
-                spec[name] = {"payoff": 1, "after": [{"node_id": "a"}]}
-            print(Graph().from_dict(spec).to_json())
-            """)
+        script = "\n".join(
+            [
+                "from petersburg.graph import Graph",
+                'spec = {"a": {"after": []}}',
+                'for name in ["b", "c", "d", "e", "f"]:',
+                '    spec[name] = {"payoff": 1, "after": [{"node_id": "a"}]}',
+                "print(Graph().from_dict(spec).to_json())",
+            ]
+        )
         outputs = set()
         for seed in ("0", "1", "2"):
             result = subprocess.run(
