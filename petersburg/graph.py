@@ -8,6 +8,7 @@
 
 """
 
+import math
 import numbers
 import re
 from contextlib import contextmanager
@@ -21,6 +22,7 @@ from petersburg.nodes import (
     Node,
     PowerLawNode,
     UniformNode,
+    _validate_transition_weights,
     is_numeric_weight,
 )
 
@@ -486,6 +488,82 @@ class Graph:
                 dict_spec[k]["after"] = [{"node_id": -1, "weight": weight, "cost": 0}]
 
         return self.from_dict(dict_spec)
+
+    def expected_value(self):
+        """
+        Exact expected net outcome of :meth:`get_outcome`, computed without simulation.
+
+        One memoized pass over the DAG evaluates
+        ``EV(n) = E[payoff(n)] + sum_i p_i * (EV(child_i) - cost_i)`` with
+        ``p_i = w_i / sum(w)``. Payoff means are the fixed ``payoff``, ``(min+max)/2`` for
+        uniform, ``mean`` for Gaussian, ``exp(mu + sigma**2/2)`` for log-normal and
+        ``scale*alpha/(alpha-1)`` for power-law nodes.
+
+        Example:
+
+        >>> from petersburg import Graph
+        >>> g = Graph().from_dict({
+        ...     1: {"payoff": 0, "after": []},
+        ...     2: {"payoff": 10, "after": [{"node_id": 1, "cost": 2, "weight": 3}]},
+        ...     3: {"payoff": 0, "after": [{"node_id": 1, "weight": 1}]},
+        ... })
+        >>> g.expected_value()
+        6.0
+
+        :return: float expected net payoff of one walk from the start node
+        :raises ValidationError: If the graph is unbuilt, any edge carries a classifier
+            weight, a power-law node has ``alpha <= 1`` (infinite mean), transition weights
+            are invalid, or the result is not finite
+        """
+
+        if self.start_node is None:
+            raise ValidationError(
+                "expected_value requires a built graph; call from_dict() or from_adj_matrix() first"
+            )
+
+        memo = {}
+
+        def visit(node):
+            if node in memo:
+                return memo[node]
+            choices = node.outcomes
+            for edge, weight in choices:
+                if not is_numeric_weight(weight):
+                    raise ValidationError(
+                        f"Node {node.node_id} has a classifier-weighted edge to node "
+                        f"{edge.to_node.node_id}; expected_value requires numeric transition weights"
+                    )
+            value = self._mean_payoff(node)
+            if choices:
+                total = _validate_transition_weights(node.node_id, choices)
+                for edge, weight in choices:
+                    if weight > 0:
+                        value += (weight / total) * (visit(edge.to_node) - edge.cost)
+            memo[node] = value
+            return value
+
+        result = float(visit(self.start_node))
+        if not math.isfinite(result):
+            raise ValidationError(f"expected_value is not finite ({result!r})")
+        return result
+
+    @staticmethod
+    def _mean_payoff(node):
+        """Analytic mean of a node's payoff distribution."""
+        if isinstance(node, UniformNode):
+            return (node.min_payoff + node.max_payoff) / 2
+        if isinstance(node, GaussianNode):
+            return node.mean
+        if isinstance(node, LogNormalNode):
+            return math.exp(node.mu + node.sigma**2 / 2)
+        if isinstance(node, PowerLawNode):
+            if node.alpha <= 1:
+                raise ValidationError(
+                    f"Node {node.node_id} has power-law alpha {node.alpha!r} <= 1, "
+                    f"so its payoff has an infinite mean"
+                )
+            return node.scale * node.alpha / (node.alpha - 1)
+        return node.payoff
 
     def get_outcome(self, iters=None, ruin=False, starting_bank=0, feature_vector=None):
         """

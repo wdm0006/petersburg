@@ -119,6 +119,13 @@ Every error the public API raises subclasses :class:`~petersburg.exceptions.Pete
 Existing ``except ValueError`` and ``except AttributeError`` handlers keep working; new
 code should catch ``PetersburgError`` or ``ValidationError``.
 
+Exact expected value
+--------------------
+
+:meth:`~petersburg.graph.Graph.expected_value` returns the exact expected net outcome of
+``get_outcome()`` without simulation, for graphs whose transition weights are all numeric
+(classifier weights raise ``ValidationError``).
+
 Serialization
 -------------
 
