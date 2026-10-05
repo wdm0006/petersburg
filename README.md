@@ -349,6 +349,13 @@ except PetersburgError as err:
 Existing `except ValueError` and `except AttributeError` handlers keep working unchanged;
 new code should catch `PetersburgError` or `ValidationError`.
 
+Exact expected value
+====================
+
+`Graph.expected_value()` returns the exact expected net outcome of `get_outcome()` without
+simulation, for graphs whose transition weights are all numeric. Use it as ground truth for
+Monte Carlo estimates.
+
 Serialization
 =============
 

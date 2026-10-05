@@ -25,6 +25,7 @@ from petersburg import (
     Node,
     PowerLawNode,
     UniformNode,
+    ValidationError,
 )
 
 __author__ = "willmcginnis"
@@ -2543,3 +2544,117 @@ class TestSampleCountValidation(unittest.TestCase):
 
         self.assertEqual(len(graph.get_options(iters=np.int64(4))), 2)
         self.assertTrue(graph.analyze_sensitivity(num_simulations=np.int64(2))["results"])
+
+
+class TestExpectedValue(unittest.TestCase):
+    """Graph.expected_value() is the exact, simulation-free mean of get_outcome()."""
+
+    def test_fixed_payoff_branching_graph(self):
+        g = Graph().from_dict(
+            {
+                1: {"payoff": 1, "after": []},
+                2: {"payoff": 10, "after": [{"node_id": 1, "cost": 2, "weight": 3}]},
+                3: {"payoff": 20, "after": [{"node_id": 1, "cost": 4, "weight": 1}]},
+                4: {"payoff": 100, "after": [{"node_id": 2, "cost": 1}]},
+            }
+        )
+        # EV(2) = 10 + (100 - 1); EV(3) = 20; EV(1) = 1 + .75 * (109 - 2) + .25 * (20 - 4)
+        self.assertAlmostEqual(g.expected_value(), 1 + 0.75 * 107 + 0.25 * 16)
+
+    def test_parallel_edges(self):
+        g = Graph().from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {
+                    "payoff": 10,
+                    "after": [
+                        {"node_id": 1, "cost": 10, "weight": 1},
+                        {"node_id": 1, "cost": 80, "weight": 3},
+                    ],
+                },
+            }
+        )
+        self.assertAlmostEqual(g.expected_value(), 10 - (0.25 * 10 + 0.75 * 80))
+
+    def _single(self, node):
+        g = Graph()
+        g.start_node = node
+        return g
+
+    def test_each_distribution_mean(self):
+        self.assertEqual(self._single(UniformNode(1, 2, 10)).expected_value(), 6.0)
+        self.assertEqual(self._single(GaussianNode(1, 7.5, 3)).expected_value(), 7.5)
+        self.assertAlmostEqual(
+            self._single(LogNormalNode(1, 1.0, 0.5)).expected_value(), math.exp(1.125)
+        )
+        self.assertAlmostEqual(self._single(PowerLawNode(1, 10, 3)).expected_value(), 15.0)
+
+    def test_power_law_infinite_mean_raises(self):
+        for alpha in (1, 0.5):
+            with self.assertRaises(ValidationError):
+                self._single(PowerLawNode(1, 10, alpha)).expected_value()
+
+    def test_classifier_weight_raises(self):
+        class Clf:
+            def predict_proba(self, X):
+                return [[0.5, 0.5]]
+
+        g = Graph().from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 1, "after": [{"node_id": 1}]},
+                3: {"payoff": 1, "after": [{"node_id": 1}]},
+            }
+        )
+        g.start_node.outcomes[0] = (g.start_node.outcomes[0][0], Clf())
+        with self.assertRaises(ValidationError):
+            g.expected_value()
+
+    def test_unbuilt_graph_raises(self):
+        with self.assertRaises(ValidationError):
+            Graph().expected_value()
+
+    def test_non_finite_result_raises(self):
+        g = Graph().from_dict({1: {"payoff": float("inf"), "after": []}})
+        with self.assertRaises(ValidationError):
+            g.expected_value()
+
+    def test_layered_converging_graph_is_linear_time(self):
+        g = Graph().from_dict(_layered_spec(15, 3))
+        self.assertEqual(len(g.node_list()), 46)
+        start = time.perf_counter()
+        value = g.expected_value()
+        self.assertLess(time.perf_counter() - start, 1.0)
+        # each of 15 layers adds payoff 1 and cost 1 (except the start's payoff 0): net 0
+        self.assertAlmostEqual(value, 0.0)
+
+    def test_agrees_with_seeded_monte_carlo_across_seeds(self):
+        spec = {
+            1: {"payoff": 1, "after": []},
+            2: {
+                "type": "uniform",
+                "min_payoff": 0,
+                "max_payoff": 20,
+                "after": [{"node_id": 1, "cost": 1, "weight": 2}],
+            },
+            3: {
+                "type": "gaussian",
+                "mean": 5,
+                "std": 2,
+                "after": [{"node_id": 1, "cost": 2, "weight": 1}],
+            },
+            4: {
+                "type": "lognormal",
+                "mu": 0.5,
+                "sigma": 0.3,
+                "after": [{"node_id": 2, "cost": 1}, {"node_id": 3}],
+            },
+            5: {"type": "powerlaw", "scale": 2, "alpha": 4, "after": [{"node_id": 4, "cost": 0.5}]},
+        }
+        exact = Graph().from_dict(spec).expected_value()
+        n = 20000
+        for seed in (1, 2, 3, 4, 5):
+            g = Graph(random_state=seed).from_dict(spec)
+            mean = sum(g.get_outcome() for _ in range(n)) / n
+            # outcome std is well under 10, so 5 standard errors is ~0.35
+            self.assertAlmostEqual(mean, exact, delta=0.35)

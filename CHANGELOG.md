@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Graph.expected_value()` returns the exact expected net outcome of `get_outcome()` for
+  graphs with numeric weights, via one memoized pass over the DAG (no simulation). It raises
+  `ValidationError` for classifier-weighted edges, power-law nodes with `alpha <= 1`, and
+  non-finite results.
+
 ## [0.4.0] - 2026-10-03
 
 This release corrects three silent-wrong-answer bugs: sensitivity rankings that were mostly
