@@ -376,6 +376,15 @@ reloaded = Graph().from_dict(g.to_dict())
 assert reloaded.to_dict() == g.to_dict()
 ```
 
+For files, `Graph.to_json(indent=None)` and `Graph.from_json(text)` encode the model as a node
+list (`{"format": "petersburg-graph", "version": 1, "nodes": [...]}`) so integer ids stay
+integers; plain `json.dumps(g.to_dict())` turns them into strings. You own the file I/O:
+
+```python
+text = g.to_json(indent=2)
+assert Graph().from_json(text).to_dict() == g.to_dict()
+```
+
 Serialization covers nodes (including per-type distribution payoff parameters), edge costs,
 and numeric transition weights. Edges weighted by estimator objects (trained classifiers)
 are deliberately not serializable — `to_dict()` raises `ValidationError` for them; rebuild

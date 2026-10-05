@@ -8,6 +8,7 @@
 
 """
 
+import json
 import math
 import numbers
 import re
@@ -27,6 +28,9 @@ from petersburg.nodes import (
 )
 
 __author__ = "willmcginnis"
+
+JSON_FORMAT = "petersburg-graph"
+JSON_VERSION = 1
 
 SENSITIVITY_PARAMETER_TYPES = ("edge_weights", "costs", "payoffs")
 _MAX_ANALYSIS_SEED = 2**63
@@ -346,6 +350,103 @@ class Graph:
             spec[node.node_id] = node_spec
 
         return spec
+
+    def to_json(self, indent=None):
+        """
+        Serializes the graph to a JSON string that :meth:`from_json` reads back.
+
+        Unlike ``json.dumps(g.to_dict())``, nodes are emitted as a list, so integer ids stay
+        integers instead of becoming string object keys, and NumPy scalars are written as
+        plain numbers. The output is deterministic for a given graph.
+
+        The encoding is ``{"format": "petersburg-graph", "version": 1, "nodes": [...]}``
+        where each node holds its ``id``, ``type``, payoff parameters and ``after`` list.
+        Random state is not stored and no file is written.
+
+        :param indent: passed to :func:`json.dumps`
+        :return: the JSON text
+        :raises ValidationError: If the graph has no start node, a node id is not an ``int``
+            or ``str``, an edge carries a classifier weight, or a value is not finite
+        """
+        nodes = []
+        for node_id, node_spec in self.to_dict().items():
+            entry = {"id": self._json_id(node_id)}
+            for key, value in node_spec.items():
+                if key == "after":
+                    entry[key] = [
+                        {
+                            "node_id": self._json_id(edge["node_id"]),
+                            "cost": self._json_number(edge["cost"]),
+                            "weight": self._json_number(edge["weight"]),
+                        }
+                        for edge in value
+                    ]
+                else:
+                    entry[key] = value if key == "type" else self._json_number(value)
+            nodes.append(entry)
+        document = {"format": JSON_FORMAT, "version": JSON_VERSION, "nodes": nodes}
+        try:
+            return json.dumps(document, indent=indent, allow_nan=False)
+        except ValueError as exc:
+            raise ValidationError(f"Cannot serialize the graph to JSON: {exc}") from exc
+
+    def from_json(self, text):
+        """
+        Rebuilds the graph from text produced by :meth:`to_json`.
+
+        The decoded nodes are handed to :meth:`from_dict`, so its validation applies and a
+        failed load leaves any existing ``start_node`` untouched.
+
+        :param text: JSON text in the ``petersburg-graph`` format, version 1
+        :return: this graph, rebuilt from ``text``
+        :raises ValidationError: If the text is not valid JSON, the ``format`` or ``version``
+            is unknown, or the node list is malformed
+        """
+        try:
+            document = json.loads(text)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(f"from_json requires valid JSON text: {exc}") from exc
+        if not isinstance(document, dict) or document.get("format") != JSON_FORMAT:
+            raise ValidationError(f"from_json expects a document with format {JSON_FORMAT!r}")
+        if document.get("version") != JSON_VERSION or isinstance(document.get("version"), bool):
+            raise ValidationError(
+                f"Unsupported {JSON_FORMAT} version {document.get('version')!r}; "
+                f"this release reads version {JSON_VERSION}"
+            )
+        nodes = document.get("nodes")
+        if not isinstance(nodes, list):
+            raise ValidationError("from_json expects 'nodes' to be a list")
+
+        spec = {}
+        for entry in nodes:
+            if not isinstance(entry, dict) or "id" not in entry:
+                raise ValidationError("Every node in 'nodes' must be an object with an 'id'")
+            node_id = self._json_id(entry["id"])
+            if node_id in spec:
+                raise ValidationError(f"Duplicate node id {node_id!r} in 'nodes'")
+            node_spec = {key: value for key, value in entry.items() if key != "id"}
+            for edge in node_spec.get("after", []):
+                if isinstance(edge, dict) and "node_id" in edge:
+                    self._json_id(edge["node_id"])
+            spec[node_id] = node_spec
+        return self.from_dict(spec)
+
+    @staticmethod
+    def _json_id(node_id):
+        """Return a JSON-safe node id: ``int`` and ``str`` only (NumPy integers become ``int``)."""
+        if isinstance(node_id, np.integer):
+            return int(node_id)
+        if isinstance(node_id, (int, str)) and not isinstance(node_id, bool):
+            return node_id
+        raise ValidationError(
+            f"Node id {node_id!r} has type {type(node_id).__name__}; JSON models support "
+            "only int and str ids"
+        )
+
+    @staticmethod
+    def _json_number(value):
+        """Convert NumPy scalars to the equivalent Python number."""
+        return value.item() if isinstance(value, np.generic) else value
 
     @staticmethod
     def _payoff_spec(node):
