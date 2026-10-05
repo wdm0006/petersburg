@@ -305,3 +305,99 @@ class TestPayoffSensitivity(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDistributionParameterValidation(unittest.TestCase):
+    DISTRIBUTIONS = (
+        ("uniform", UniformNode, {"min_payoff": -2, "max_payoff": 3}),
+        ("gaussian", GaussianNode, {"mean": -2, "std": 1}),
+        ("lognormal", LogNormalNode, {"mu": -2, "sigma": 1}),
+        ("powerlaw", PowerLawNode, {"scale": 1, "alpha": 2}),
+    )
+
+    def _assert_rejected(self, kind, constructor, parameters, fragments):
+        from petersburg import ValidationError
+
+        graph = Graph().from_dict({1: {"after": [], "payoff": 7}})
+        original_start = graph.start_node
+        spec = {
+            1: {"after": []},
+            "bad-node": {"after": [{"node_id": 1}], "type": kind, **parameters},
+        }
+        for route in ("constructor", "from_dict"):
+            with self.subTest(route=route):
+                with self.assertRaises(ValidationError) as caught:
+                    if route == "constructor":
+                        constructor("bad-node", **parameters)
+                    else:
+                        graph.from_dict(spec)
+                self.assertIsInstance(caught.exception, ValueError)
+                for fragment in ("bad-node", *fragments):
+                    self.assertIn(fragment, str(caught.exception))
+                self.assertIs(graph.start_node, original_start)
+                self.assertEqual(graph.get_outcome(), 7)
+
+    def test_each_parameter_requires_finite_real_number(self):
+        for kind, constructor, defaults in self.DISTRIBUTIONS:
+            for parameter in defaults:
+                for value in (float("nan"), float("inf"), -float("inf"), 1j, "1", None):
+                    with self.subTest(kind=kind, parameter=parameter, value=value):
+                        parameters = {**defaults, parameter: value}
+                        self._assert_rejected(
+                            kind, constructor, parameters, (parameter, repr(value))
+                        )
+
+    def test_distribution_domains(self):
+        for kind, constructor, defaults in self.DISTRIBUTIONS:
+            for parameter in ("std", "sigma", "scale", "alpha"):
+                if parameter not in defaults:
+                    continue
+                values = (-1, 0) if parameter in ("scale", "alpha") else (-1,)
+                for value in values:
+                    with self.subTest(kind=kind, parameter=parameter, value=value):
+                        self._assert_rejected(
+                            kind,
+                            constructor,
+                            {**defaults, parameter: value},
+                            (parameter, repr(value)),
+                        )
+        self._assert_rejected(
+            "uniform",
+            UniformNode,
+            {"min_payoff": 10, "max_payoff": 0},
+            ("min_payoff", "10", "max_payoff", "0"),
+        )
+
+    def test_valid_boundaries_and_numpy_scalars(self):
+        cases = (
+            ("uniform", UniformNode, {"min_payoff": -2, "max_payoff": -2}, -2),
+            ("uniform", UniformNode, {"min_payoff": -3, "max_payoff": -1}, None),
+            ("gaussian", GaussianNode, {"mean": np.float64(-2), "std": 0}, -2),
+            ("lognormal", LogNormalNode, {"mu": 0, "sigma": np.int64(0)}, 1),
+            ("powerlaw", PowerLawNode, {"scale": np.float64(1), "alpha": 0.5}, None),
+            ("powerlaw", PowerLawNode, {"scale": 1, "alpha": 1}, None),
+        )
+        for kind, constructor, parameters, expected in cases:
+            with self.subTest(kind=kind, parameters=parameters):
+                node = constructor(2, **parameters, rng=np.random.default_rng(42))
+                graph = Graph(random_state=42).from_dict(
+                    {2: {"after": [], "type": kind, **parameters}}
+                )
+                for actual in (node.sample_payoff(), graph.get_outcome()):
+                    self.assertTrue(math.isfinite(actual))
+                    if expected is not None:
+                        self.assertEqual(actual, expected)
+
+    def test_from_dict_keeps_missing_parameter_defaults(self):
+        defaults = (
+            {"min_payoff": 0, "max_payoff": 0},
+            {"mean": 0, "std": 1},
+            {"mu": 0, "sigma": 1},
+            {"scale": 1, "alpha": 2},
+        )
+        for (kind, constructor, _), parameters in zip(self.DISTRIBUTIONS, defaults):
+            with self.subTest(kind=kind):
+                graph = Graph().from_dict({2: {"after": [], "type": kind}})
+                self.assertIsInstance(graph.start_node, constructor)
+                for parameter, expected in parameters.items():
+                    self.assertEqual(getattr(graph.start_node, parameter), expected)
