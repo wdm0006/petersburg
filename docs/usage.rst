@@ -139,6 +139,15 @@ serializable and raise ``ValidationError`` on serialize.
     reloaded = Graph().from_dict(g.to_dict())
     assert reloaded.to_dict() == g.to_dict()
 
+:meth:`~petersburg.graph.Graph.to_json` and :meth:`~petersburg.graph.Graph.from_json` do the
+same through a JSON string (a ``petersburg-graph`` version 1 document with a node list), so
+integer and string ids keep their type. Reading and writing files is left to the caller.
+
+.. code-block:: python
+
+    text = g.to_json(indent=2)
+    assert Graph().from_json(text).to_dict() == g.to_dict()
+
 Prediction
 ----------
 

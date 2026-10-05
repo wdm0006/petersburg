@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Graph.to_json(indent=None)` / `Graph.from_json(text)` save and load a graph as a
+  `petersburg-graph` version 1 JSON document. Nodes are a list, so `int` and `str` ids keep
+  their type, and NumPy scalars are written as plain numbers. Other id types, classifier
+  weights, and unknown `format`/`version` raise `ValidationError`.
 - `Graph.expected_value()` returns the exact expected net outcome of `get_outcome()` for
   graphs with numeric weights, via one memoized pass over the DAG (no simulation). It raises
   `ValidationError` for classifier-weighted edges, power-law nodes with `alpha <= 1`, and
