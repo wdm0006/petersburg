@@ -79,6 +79,17 @@ and node payoffs automatically and rank the parameters by impact on expected val
 
     g.print_sensitivity_report(num_simulations=1000, perturbation=0.1, top_n=5)
 
+With the ``visualization`` extra installed,
+:meth:`~petersburg.graph.Graph.plot_sensitivity` returns a matplotlib Figure with
+parameters ranked by sensitivity, largest at the top. It accepts either report
+format, or computes a combined report when omitted. It never opens a window.
+Keyword arguments style the bars; ``filename`` saves the figure.
+
+.. code-block:: python
+
+    report = g.identify_critical_parameters(top_n=10)
+    figure = g.plot_sensitivity(report, top_n=5, filename="sensitivity.png")
+
 Each parameter's baseline and both of its perturbation arms replay one shared stream of
 random draws (common random numbers), so a reported ``sensitivity`` measures the
 parameter's effect rather than the sum of three independent sampling errors. Costs and

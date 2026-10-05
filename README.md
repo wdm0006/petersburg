@@ -210,6 +210,15 @@ g.print_sensitivity_report(num_simulations=1000, perturbation=0.1, top_n=5)
 g.print_sensitivity_report(num_simulations=1000, perturbation=0.1, top_n=5, max_params=None)
 ```
 
+With `petersburg[visualization]` installed, create a tornado chart from either report
+format (or omit `report` to compute one). The method returns a matplotlib Figure
+without opening a window; `color` and other keyword arguments style the bars.
+
+```python
+report = g.identify_critical_parameters(top_n=10)
+figure = g.plot_sensitivity(report, top_n=5, filename="sensitivity.png", color="steelblue")
+```
+
 ### Visualizing the Graph
 
 ```python
