@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Graph.plot_sensitivity()` returns a matplotlib tornado chart from either sensitivity
   report format, with top-N selection, baseline and seed labels, and optional file output.
 
+### Fixed
+
+- Distribution nodes now reject non-real, non-finite, and out-of-domain parameters
+  at construction with `ValidationError`, including when built through `Graph.from_dict`.
+  Zero standard deviations and equal uniform bounds remain valid; omitted dictionary
+  parameters retain their existing defaults.
+
 ## [0.4.0] - 2026-10-03
 
 This release corrects three silent-wrong-answer bugs: sensitivity rankings that were mostly

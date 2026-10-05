@@ -10,7 +10,7 @@
 
 import math
 from contextlib import contextmanager
-from numbers import Number
+from numbers import Number, Real
 
 import numpy as np
 
@@ -56,6 +56,33 @@ def _validate_transition_weights(node_id, choices):
         )
 
     return total
+
+
+def _validate_distribution_parameters(node_id, **parameters):
+    """Reject invalid distribution inputs before computing or sampling payoffs."""
+    for parameter, value in parameters.items():
+        try:
+            finite = isinstance(value, Real) and math.isfinite(value)
+        except (TypeError, OverflowError):
+            finite = False
+        if not finite:
+            raise ValidationError(
+                f"Node {node_id} has invalid {parameter}={value!r}; "
+                "distribution parameters must be finite real numbers"
+            )
+        if parameter in ("std", "sigma") and value < 0:
+            raise ValidationError(
+                f"Node {node_id} has invalid {parameter}={value!r}; must be non-negative"
+            )
+        if parameter in ("scale", "alpha") and value <= 0:
+            raise ValidationError(
+                f"Node {node_id} has invalid {parameter}={value!r}; must be positive"
+            )
+    if "min_payoff" in parameters and parameters["min_payoff"] > parameters["max_payoff"]:
+        raise ValidationError(
+            f"Node {node_id} has invalid min_payoff={parameters['min_payoff']!r} and "
+            f"max_payoff={parameters['max_payoff']!r}; min_payoff must be <= max_payoff"
+        )
 
 
 class Node:
@@ -234,6 +261,7 @@ class UniformNode(Node):
         :param min_payoff: Minimum payoff value (inclusive)
         :param max_payoff: Maximum payoff value (inclusive)
         """
+        _validate_distribution_parameters(node_id, min_payoff=min_payoff, max_payoff=max_payoff)
         super().__init__(node_id, payoff=(min_payoff + max_payoff) / 2, rng=rng)
         self.min_payoff = min_payoff
         self.max_payoff = max_payoff
@@ -274,6 +302,7 @@ class GaussianNode(Node):
         :param mean: Mean of the normal distribution
         :param std: Standard deviation of the normal distribution
         """
+        _validate_distribution_parameters(node_id, mean=mean, std=std)
         super().__init__(node_id, payoff=mean, rng=rng)
         self.mean = mean
         self.std = std
@@ -312,6 +341,7 @@ class LogNormalNode(Node):
         :param mu: Mean of the underlying normal distribution (not the mean of the log-normal!)
         :param sigma: Standard deviation of the underlying normal distribution
         """
+        _validate_distribution_parameters(node_id, mu=mu, sigma=sigma)
         super().__init__(node_id, payoff=np.exp(mu + sigma**2 / 2), rng=rng)
         self.mu = mu
         self.sigma = sigma
@@ -347,8 +377,9 @@ class PowerLawNode(Node):
 
         :param node_id: Unique identifier for this node
         :param scale: Scale parameter (minimum possible value)
-        :param alpha: Shape parameter (controls tail heaviness, alpha > 1)
+        :param alpha: Shape parameter (controls tail heaviness, alpha > 0)
         """
+        _validate_distribution_parameters(node_id, scale=scale, alpha=alpha)
         super().__init__(
             node_id,
             payoff=scale * alpha / (alpha - 1) if alpha > 1 else scale * 2,
