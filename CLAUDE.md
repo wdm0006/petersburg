@@ -45,11 +45,12 @@ Notes:
 
 ## CI (GitHub Actions, `.github/workflows/ci.yml`)
 
-Three jobs run on every push/PR:
+Four jobs run on every push/PR:
 
 1. **test** — Python 3.9–3.14 matrix: ruff, black, mypy (continue-on-error), pytest, doctests.
 2. **examples** — Python 3.12, installs only the `[examples]` extra (proving it is sufficient on its own), then runs an explicit allowlist of example scripts with `MPLBACKEND=Agg`. `examples/stpetersburg_w_bankroll.py` is excluded (10M-game simulation); `examples/print.py` runs, but its `plot()` image render needs a system Graphviz the runner does not have — the script catches that failure itself.
 3. **build** — `uv build` + `twine check`.
+4. **visualization** — installs the built wheel with only `[visualization]` and runs the tornado example outside the checkout.
 
 ## Core Architecture
 

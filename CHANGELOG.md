@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Graph.plot_sensitivity()` returns a matplotlib tornado chart from either sensitivity
+  report format, with top-N selection, baseline and seed labels, and optional file output.
+
 ## [0.4.0] - 2026-10-03
 
 This release corrects three silent-wrong-answer bugs: sensitivity rankings that were mostly

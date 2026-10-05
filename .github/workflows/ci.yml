@@ -33,7 +33,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install --system -e ".[dev]"
+        uv pip install --system -e ".[dev,visualization]"
 
     - name: Run ruff linting
       run: |
@@ -107,6 +107,7 @@ jobs:
           examples/outsourcing.py \
           examples/print.py \
           examples/simple_distribution_example.py \
+          examples/sensitivity_tornado.py \
           examples/stpetersburg.py \
           examples/two_envelope_problem.py
         do
@@ -128,6 +129,25 @@ jobs:
           )
           echo "::endgroup::"
         done
+
+  visualization:
+    runs-on: ubuntu-latest
+    env:
+      MPLBACKEND: Agg
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - uses: astral-sh/setup-uv@v5
+    - name: Test visualization extra from installed wheel
+      run: |
+        uv build --wheel
+        uv venv /tmp/petersburg-viz
+        uv pip install --python /tmp/petersburg-viz/bin/python "$(echo dist/*.whl)[visualization]"
+        cp examples/sensitivity_tornado.py /tmp/petersburg-tornado.py
+        cd /tmp
+        /tmp/petersburg-viz/bin/python petersburg-tornado.py
 
   build:
     runs-on: ubuntu-latest

@@ -1157,6 +1157,49 @@ class Graph:
             "top_parameters": top_parameters,
         }
 
+    def plot_sensitivity(self, report=None, top_n=10, filename=None, **kwargs):
+        """Plot ranked sensitivity magnitudes as a horizontal tornado chart.
+
+        :param report: Report from analyze_sensitivity or identify_critical_parameters;
+            if None, compute a combined report with the default analysis settings
+        :param top_n: Positive integer limiting the number of bars
+        :param filename: Optional output path passed to Figure.savefig
+        :param kwargs: Styling arguments passed to Axes.barh (e.g., color)
+        :return: matplotlib Figure; never calls pyplot.show
+        :raises ValidationError: If top_n is invalid or the report has no parameters
+        :raises ImportError: If matplotlib is unavailable; install petersburg[visualization]
+        """
+        if isinstance(top_n, bool):
+            raise ValidationError("top_n must be a positive integer")
+        validate_sample_count("top_n", top_n)
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError as exc:
+            raise ImportError(
+                "Sensitivity plotting requires matplotlib; install petersburg[visualization]"
+            ) from exc
+
+        if report is None:
+            report = self.identify_critical_parameters(top_n=top_n)
+        results = report.get("results", report.get("top_parameters", []))
+        if not results:
+            raise ValidationError("Sensitivity report contains no parameters to plot")
+        ranked = sorted(results, key=lambda result: result["sensitivity"], reverse=True)[:top_n]
+        figure, axes = plt.subplots(figsize=(10, max(3, 1.5 + 0.4 * len(ranked))))
+        axes.barh(range(len(ranked)), [result["sensitivity"] for result in ranked], **kwargs)
+        axes.set_yticks(range(len(ranked)))
+        axes.set_yticklabels([result["parameter"] for result in ranked])
+        axes.invert_yaxis()
+        axes.set_xlabel("Sensitivity (absolute change in expected value)")
+        axes.set_title(
+            f"Sensitivity tornado — baseline_ev={report['baseline_ev']}\n"
+            f"analysis_seed={report['analysis_seed']}"
+        )
+        figure.tight_layout()
+        if filename is not None:
+            figure.savefig(filename)
+        return figure
+
     def print_sensitivity_report(
         self, num_simulations=1000, perturbation=0.1, top_n=5, max_params=10
     ):
