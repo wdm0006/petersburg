@@ -2658,3 +2658,68 @@ class TestExpectedValue(unittest.TestCase):
             mean = sum(g.get_outcome() for _ in range(n)) / n
             # outcome std is well under 10, so 5 standard errors is ~0.35
             self.assertAlmostEqual(mean, exact, delta=0.35)
+
+
+class TestExpectedOptions(unittest.TestCase):
+    """Graph.expected_options() is the exact, simulation-free counterpart of get_options()."""
+
+    SPEC = {
+        1: {"payoff": 5, "after": []},
+        2: {"payoff": 10, "after": [{"node_id": 1, "cost": 2, "weight": 3}]},
+        3: {"payoff": 20, "after": [{"node_id": 1, "cost": 4, "weight": 1}]},
+        4: {"payoff": 100, "after": [{"node_id": 2, "cost": 1, "weight": 1}]},
+        5: {"payoff": 0, "after": [{"node_id": 2, "cost": 0, "weight": 1}]},
+    }
+    PARALLEL = {
+        1: {"payoff": 0, "after": []},
+        2: {
+            "payoff": 10,
+            "after": [
+                {"node_id": 1, "cost": 10, "weight": 1},
+                {"node_id": 1, "cost": 80, "weight": 3},
+            ],
+        },
+    }
+
+    def test_hand_computed_values(self):
+        g = Graph().from_dict(self.SPEC)
+        # EV(2) = 10 + 0.5 * (100 - 1) + 0.5 * 0 = 59.5; EV(3) = 20; start payoff 5
+        self.assertEqual(g.expected_options(), {2: 5 + 59.5 - 2, 3: 5 + 20 - 4})
+
+    def test_keys_match_get_options(self):
+        for spec in (self.SPEC, self.PARALLEL):
+            g = Graph(random_state=1).from_dict(spec)
+            self.assertEqual(list(g.expected_options()), list(g.get_options(iters=5)))
+        self.assertEqual(
+            Graph().from_dict(self.PARALLEL).expected_options(), {2: 0.0, (2, 1): -70.0}
+        )
+
+    def test_weighted_average_equals_expected_value(self):
+        g = Graph().from_dict(self.SPEC)
+        options = g.expected_options()
+        weights = {2: 3, 3: 1}
+        average = sum(weights[k] * v for k, v in options.items()) / 4
+        self.assertAlmostEqual(average, g.expected_value())
+
+    def test_agrees_with_simulation_across_seeds(self):
+        exact = Graph().from_dict(self.SPEC).expected_options()
+        for seed in (1, 2, 3):
+            simulated = Graph(random_state=seed).from_dict(self.SPEC).get_options(iters=20000)
+            for key, value in exact.items():
+                self.assertAlmostEqual(simulated[key], value, delta=1.0)
+
+    def test_classifier_weight_below_first_edge_raises(self):
+        g = Graph().from_dict(self.SPEC)
+        child = g.start_node.outcomes[0][0].to_node
+
+        class Stub:
+            def predict_proba(self, feature_vector):
+                return np.array([[0.5, 0.5]])
+
+        child.add_outcome(Node(9), weight=1, classifier=Stub())
+        with self.assertRaises(ValidationError):
+            g.expected_options()
+
+    def test_unbuilt_graph_raises(self):
+        with self.assertRaises(ValidationError):
+            Graph().expected_options()
