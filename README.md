@@ -370,6 +370,23 @@ deviation of the net outcome, using the same numeric-weight requirement. Power-l
 need `alpha > 2` for finite variance; invalid weights and non-finite moments raise
 `ValidationError`. Zero-weight branches are skipped.
 
+`Graph.outcome_distribution(max_outcomes=10000)` returns an ascending-key dict of net
+payoff to probability for fixed-payoff graphs with numeric weights. It validates every
+reachable node and edge, including zero-weight branches, and propagates only positive
+weights. The cap bounds distinct outcomes at each node during accumulation; overflow
+raises `ValidationError` without returning a partial result. Outcomes merge by exact
+numeric equality, so differing floating-point representations remain separate atoms.
+
+```python
+g = Graph().from_dict({
+    1: {"payoff": 5, "after": []},
+    2: {"payoff": 10, "after": [{"node_id": 1, "cost": 2, "weight": 3}]},
+    3: {"payoff": -4, "after": [{"node_id": 1, "cost": 3, "weight": 1}]},
+})
+masses = g.outcome_distribution()  # {-2: 0.25, 13: 0.75}
+p_loss = sum(p for payoff, p in masses.items() if payoff < 0)  # 0.25
+```
+
 Serialization
 =============
 

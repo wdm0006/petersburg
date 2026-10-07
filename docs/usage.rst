@@ -130,6 +130,29 @@ Exact expected value
 exact population spread of the net outcome. They require numeric weights and finite
 moments; power-law nodes require ``alpha > 2``. Zero-weight branches are skipped.
 
+Exact fixed-payoff outcome probabilities
+----------------------------------------
+
+:meth:`~petersburg.graph.Graph.outcome_distribution` returns an ascending-outcome-ordered
+mapping of net payoff to probability without sampling. It requires fixed payoff nodes,
+finite real payoffs and costs, and numeric transition weights throughout the reachable
+model, including zero-weight branches. Zero-weight edges propagate no mass.
+
+``max_outcomes=10000`` bounds distinct outcomes at every node during accumulation;
+exceeding it raises ``ValidationError`` without a partial or approximate result. Only
+exactly equal numeric outcomes merge; floating-point representations that differ remain
+separate atoms, with no rounding or binning.
+
+.. code-block:: python
+
+    g = Graph().from_dict({
+        1: {"payoff": 5, "after": []},
+        2: {"payoff": 10, "after": [{"node_id": 1, "cost": 2, "weight": 3}]},
+        3: {"payoff": -4, "after": [{"node_id": 1, "cost": 3, "weight": 1}]},
+    })
+    masses = g.outcome_distribution()  # {-2: 0.25, 13: 0.75}
+    p_loss = sum(p for payoff, p in masses.items() if payoff < 0)  # 0.25
+
 Serialization
 -------------
 
