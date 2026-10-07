@@ -126,6 +126,10 @@ Exact expected value
 ``get_outcome()`` without simulation, for graphs whose transition weights are all numeric
 (classifier weights raise ``ValidationError``).
 
+:meth:`~petersburg.graph.Graph.variance` and :meth:`~petersburg.graph.Graph.std` compute
+exact population spread of the net outcome. They require numeric weights and finite
+moments; power-law nodes require ``alpha > 2``. Zero-weight branches are skipped.
+
 Serialization
 -------------
 

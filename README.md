@@ -365,6 +365,11 @@ Exact expected value
 simulation, for graphs whose transition weights are all numeric. Use it as ground truth for
 Monte Carlo estimates.
 
+`Graph.variance()` and `Graph.std()` return the exact population variance and standard
+deviation of the net outcome, using the same numeric-weight requirement. Power-law nodes
+need `alpha > 2` for finite variance; invalid weights and non-finite moments raise
+`ValidationError`. Zero-weight branches are skipped.
+
 Serialization
 =============
 
