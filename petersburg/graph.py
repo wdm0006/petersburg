@@ -617,9 +617,18 @@ class Graph:
             are invalid, or the result is not finite
         """
 
+        visit = self._exact_visitor("expected_value")
+        result = float(visit(self.start_node))
+        if not math.isfinite(result):
+            raise ValidationError(f"expected_value is not finite ({result!r})")
+        return result
+
+    def _exact_visitor(self, caller):
+        """Memoized ``EV(node)`` function shared by :meth:`expected_value` and :meth:`expected_options`."""
+
         if self.start_node is None:
             raise ValidationError(
-                "expected_value requires a built graph; call from_dict() or from_adj_matrix() first"
+                f"{caller} requires a built graph; call from_dict() or from_adj_matrix() first"
             )
 
         memo = {}
@@ -632,7 +641,7 @@ class Graph:
                 if not is_numeric_weight(weight):
                     raise ValidationError(
                         f"Node {node.node_id} has a classifier-weighted edge to node "
-                        f"{edge.to_node.node_id}; expected_value requires numeric transition weights"
+                        f"{edge.to_node.node_id}; {caller} requires numeric transition weights"
                     )
             value = self._mean_payoff(node)
             if choices:
@@ -643,10 +652,44 @@ class Graph:
             memo[node] = value
             return value
 
-        result = float(visit(self.start_node))
-        if not math.isfinite(result):
-            raise ValidationError(f"expected_value is not finite ({result!r})")
-        return result
+        return visit
+
+    def expected_options(self):
+        """
+        Exact expected value of each start-node option, computed without simulation.
+
+        Returns the keys of :meth:`get_options` (``node_id``, or ``(node_id, occurrence)``
+        for parallel options), each mapped to ``E[start payoff] + EV(child) - edge.cost``,
+        the quantity ``get_options`` estimates by simulation. Transition weights out of the
+        start node do not affect these values.
+
+        Example:
+
+        >>> from petersburg import Graph
+        >>> g = Graph().from_dict({
+        ...     1: {"payoff": 1, "after": []},
+        ...     2: {"payoff": 10, "after": [{"node_id": 1, "cost": 2}]},
+        ...     3: {"payoff": 4, "after": [{"node_id": 1}]},
+        ... })
+        >>> g.expected_options()
+        {2: 9.0, 3: 5.0}
+
+        :return: dict mapping option keys to float expected net payoffs
+        :raises ValidationError: Under the same conditions as :meth:`expected_value`, for any
+            part of the graph below the start node's first edges, or if a value is not finite
+        """
+
+        visit = self._exact_visitor("expected_options")
+        start_mean = self._mean_payoff(self.start_node)
+        options = {}
+        for key, (edge, _) in zip(self._option_keys(), self.start_node.outcomes):
+            value = float(start_mean + visit(edge.to_node) - edge.cost)
+            if not math.isfinite(value):
+                raise ValidationError(
+                    f"expected_options value for option {key!r} is not finite ({value!r})"
+                )
+            options[key] = value
+        return options
 
     @staticmethod
     def _mean_payoff(node):
