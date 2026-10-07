@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Graph.variance()` and `Graph.std()` compute exact net outcome spread without simulation.
+
 - `Graph.to_json(indent=None)` / `Graph.from_json(text)` save and load a graph as a
   `petersburg-graph` version 1 JSON document. Nodes are a list, so `int` and `str` ids keep
   their type, and NumPy scalars are written as plain numbers. Other id types, classifier

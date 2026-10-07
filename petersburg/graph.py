@@ -648,6 +648,106 @@ class Graph:
             raise ValidationError(f"expected_value is not finite ({result!r})")
         return result
 
+    def variance(self):
+        """
+        Exact population variance of :meth:`get_outcome`, without simulation.
+
+        A memoized DAG pass combines first and second moments, assuming each node's
+        payoff is independent of the downstream branch. Numeric relative weights
+        are normalized at each node; zero-weight branches are skipped. Like other
+        floating-point moment calculations, this can lose precision when the mean
+        is very large compared with the spread.
+
+        Example: outcomes 8 and 0 have probabilities 3/4 and 1/4, giving variance 12.
+
+        >>> from petersburg import Graph
+        >>> g = Graph().from_dict({
+        ...     1: {"payoff": 0, "after": []},
+        ...     2: {"payoff": 10, "after": [{"node_id": 1, "cost": 2, "weight": 3}]},
+        ...     3: {"payoff": 0, "after": [{"node_id": 1, "weight": 1}]},
+        ... })
+        >>> g.variance()
+        12.0
+
+        :return: float variance of the net payoff of one walk from the start node
+        :raises ValidationError: If the graph is unbuilt, an edge carries a classifier
+            weight, transition weights are invalid, a visited power-law node has
+            ``alpha <= 2`` (infinite variance), or a moment/result is not finite
+        """
+        if self.start_node is None:
+            raise ValidationError(
+                "variance requires a built graph; call from_dict() or from_adj_matrix() first"
+            )
+
+        memo: dict[Node, tuple[float, float]] = {}
+
+        def visit(node):
+            if node in memo:
+                return memo[node]
+            choices = node.outcomes
+            for edge, weight in choices:
+                if not is_numeric_weight(weight):
+                    raise ValidationError(
+                        f"Node {node.node_id} has a classifier-weighted edge to node "
+                        f"{edge.to_node.node_id}; variance requires numeric transition weights"
+                    )
+            payoff_variance = self._payoff_variance(node)
+            mean = self._mean_payoff(node)
+            downstream_mean = downstream_second = 0.0
+            if choices:
+                total = _validate_transition_weights(node.node_id, choices)
+                for edge, weight in choices:
+                    if weight > 0:
+                        child_mean, child_second = visit(edge.to_node)
+                        probability = weight / total
+                        downstream_mean += probability * (child_mean - edge.cost)
+                        downstream_second += probability * (
+                            child_second - 2 * edge.cost * child_mean + edge.cost**2
+                        )
+            first = mean + downstream_mean
+            second = payoff_variance + mean**2 + 2 * mean * downstream_mean + downstream_second
+            if not math.isfinite(first) or not math.isfinite(second):
+                raise ValidationError(f"Node {node.node_id} has non-finite outcome moments")
+            memo[node] = (first, second)
+            return memo[node]
+
+        try:
+            first, second = visit(self.start_node)
+            result = float(second - first**2)
+        except OverflowError as exc:
+            raise ValidationError("variance has non-finite outcome moments") from exc
+        if not math.isfinite(result):
+            raise ValidationError(f"variance is not finite ({result!r})")
+        if result < 0:
+            if abs(result) <= 8 * math.ulp(max(abs(second), first**2)):
+                return 0.0
+            raise ValidationError(f"variance is negative ({result!r})")
+        return result
+
+    def std(self):
+        """Return the exact population standard deviation; see :meth:`variance`."""
+        return math.sqrt(self.variance())
+
+    @staticmethod
+    def _payoff_variance(node):
+        """Analytic variance of a node's payoff distribution."""
+        if isinstance(node, UniformNode):
+            return (node.max_payoff - node.min_payoff) ** 2 / 12
+        if isinstance(node, GaussianNode):
+            return node.std**2
+        if isinstance(node, LogNormalNode):
+            if node.sigma == 0:
+                return 0.0
+            return math.expm1(node.sigma**2) * math.exp(2 * node.mu + node.sigma**2)
+        if isinstance(node, PowerLawNode):
+            if node.alpha <= 2:
+                raise ValidationError(
+                    f"Node {node.node_id} has power-law alpha {node.alpha!r} <= 2, "
+                    f"so its payoff has an infinite variance"
+                )
+            return node.scale**2 * node.alpha / ((node.alpha - 1) ** 2 * (node.alpha - 2))
+        return 0.0
+
     @staticmethod
     def _mean_payoff(node):
         """Analytic mean of a node's payoff distribution."""
