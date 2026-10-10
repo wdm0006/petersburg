@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Graph.outcome_distribution(max_outcomes=10000)` computes exact fixed-payoff outcome
+  masses without sampling, merging exactly equal outcomes and bounding each node's support.
+  Unsupported reachable models and support overflow raise `ValidationError`.
+
 - `Graph.variance()` and `Graph.std()` compute exact net outcome spread without simulation.
 
 - `Graph.to_json(indent=None)` / `Graph.from_json(text)` save and load a graph as a

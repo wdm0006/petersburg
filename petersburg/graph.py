@@ -691,6 +691,106 @@ class Graph:
             options[key] = value
         return options
 
+    def outcome_distribution(self, max_outcomes=10000):
+        """
+        Exact finite-support distribution of net payoffs, without draws or RNG changes.
+
+        Only fixed payoff nodes and numeric relative weights are supported. The entire
+        structurally reachable model is validated, including zero-weight branches;
+        zero-weight edges contribute no probability mass. Each node's downstream
+        distribution is memoized for this call. Outcomes merge only under exact numeric
+        equality: floating-point expressions that differ in representation remain separate
+        atoms. No rounding or binning is performed.
+
+        ``max_outcomes`` bounds distinct outcomes at every node, including intermediate
+        accumulation. Exceeding it raises rather than returning an approximate/partial result.
+
+        >>> from petersburg import Graph
+        >>> g = Graph().from_dict({
+        ...     1: {"payoff": 5, "after": []},
+        ...     2: {"payoff": 10, "after": [{"node_id": 1, "cost": 2, "weight": 3}]},
+        ...     3: {"payoff": -4, "after": [{"node_id": 1, "cost": 3, "weight": 1}]},
+        ... })
+        >>> masses = g.outcome_distribution()
+        >>> masses
+        {-2: 0.25, 13: 0.75}
+        >>> sum(probability for outcome, probability in masses.items() if outcome < 0)
+        0.25
+
+        :param max_outcomes: Positive integer support cap per node (bool is excluded)
+        :return: dict mapping net payoff to probability, with keys in ascending order
+        :raises ValidationError: If unbuilt, the cap is invalid, any reachable node or
+            weight is unsupported, payoffs/costs/shifted outcomes are not finite real
+            numbers, transition weights are invalid, or any node exceeds the support cap
+        """
+        if (
+            isinstance(max_outcomes, bool)
+            or not isinstance(max_outcomes, numbers.Integral)
+            or max_outcomes <= 0
+        ):
+            raise ValidationError(
+                f"max_outcomes must be a positive integer excluding bool, got {max_outcomes!r}"
+            )
+        if self.start_node is None:
+            raise ValidationError("outcome_distribution requires a built graph")
+
+        def finite_real(value, description):
+            try:
+                valid = isinstance(value, numbers.Real) and math.isfinite(value)
+            except (TypeError, OverflowError):
+                valid = False
+            if not valid:
+                raise ValidationError(f"{description} must be a finite real number, got {value!r}")
+
+        totals = {}
+        for node in self.node_list():
+            if type(node) is not Node:
+                raise ValidationError(
+                    f"Node {node.node_id} has unsupported type {type(node).__name__}; "
+                    "outcome_distribution requires fixed payoff nodes"
+                )
+            finite_real(node.payoff, f"Node {node.node_id} payoff")
+            for edge, weight in node.outcomes:
+                finite_real(edge.cost, f"Edge {node.node_id} to {edge.to_node.node_id} cost")
+                if not is_numeric_weight(weight):
+                    raise ValidationError(
+                        f"Node {node.node_id} has unsupported classifier or non-numeric weight; "
+                        "outcome_distribution requires numeric transition weights"
+                    )
+            if node.outcomes:
+                try:
+                    totals[node] = _validate_transition_weights(node.node_id, node.outcomes)
+                except OverflowError as exc:
+                    raise ValidationError(
+                        f"Node {node.node_id} has invalid transition weights"
+                    ) from exc
+
+        memo: dict[Node, dict[float, float]] = {}
+
+        def visit(node):
+            if node in memo:
+                return memo[node]
+            distribution = {}
+            if not node.outcomes:
+                distribution[node.payoff] = 1.0
+            else:
+                for edge, weight in node.outcomes:
+                    if weight == 0:
+                        continue
+                    probability = weight / totals[node]
+                    for outcome, mass in visit(edge.to_node).items():
+                        shifted = outcome + node.payoff - edge.cost
+                        finite_real(shifted, f"Node {node.node_id} shifted outcome")
+                        distribution[shifted] = distribution.get(shifted, 0.0) + probability * mass
+                        if len(distribution) > max_outcomes:
+                            raise ValidationError(
+                                f"Node {node.node_id} outcome support exceeds max_outcomes={max_outcomes}"
+                            )
+            memo[node] = distribution
+            return distribution
+
+        return dict(sorted(visit(self.start_node).items()))
+
     def variance(self):
         """
         Exact population variance of :meth:`get_outcome`, without simulation.
