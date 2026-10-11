@@ -90,6 +90,13 @@ Keyword arguments style the bars; ``filename`` saves the figure.
     report = g.identify_critical_parameters(top_n=10)
     figure = g.plot_sensitivity(report, top_n=5, filename="sensitivity.png")
 
+For graphs with numeric weights,
+:meth:`~petersburg.graph.Graph.exact_sensitivity` ranks the same parameters by
+re-evaluating the exact expected value at ``±perturbation`` with no sampling, so its
+numbers are identical across calls and seeds. Its report (uncapped, ``analysis_seed`` of
+``None``) can be passed to :meth:`~petersburg.graph.Graph.plot_sensitivity`; classifier
+weights raise ``ValidationError``.
+
 Each parameter's baseline and both of its perturbation arms replay one shared stream of
 random draws (common random numbers), so a reported ``sensitivity`` measures the
 parameter's effect rather than the sum of three independent sampling errors. Costs and
