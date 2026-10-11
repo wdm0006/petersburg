@@ -1570,6 +1570,122 @@ class Graph:
             "results": sensitivity_results,
         }
 
+    def exact_sensitivity(self, perturbation=0.1, parameter_types=SENSITIVITY_PARAMETER_TYPES):
+        """
+        Deterministic sensitivity of the exact expected value, with no sampling.
+
+        Each candidate parameter is perturbed by ``±perturbation`` in turn and
+        :meth:`expected_value` is re-evaluated, so repeated calls return identical numbers
+        regardless of the graph's seed and the graph's random stream is never consumed.
+        Candidates and their ordering match :meth:`analyze_sensitivity` (sole-outgoing
+        edge weights excluded, no ``max_params`` cap), and the report has the same shape,
+        so it can be passed to :meth:`plot_sensitivity`. ``analysis_seed`` is ``None``
+        because no random stream is involved.
+
+        :param perturbation: Fractional variation, strictly between 0 and 1
+        :param parameter_types: Iterable drawn from ``SENSITIVITY_PARAMETER_TYPES``
+        :return: Dictionary with ``baseline_ev``, ``candidate_parameters``,
+            ``parameters_analyzed`` and ``results`` sorted by sensitivity
+        :raises ValidationError: If perturbation is invalid, a parameter type is unknown,
+            or the graph is unbuilt, classifier-weighted, or has non-finite moments
+        """
+        self._validate_perturbation(perturbation)
+        if isinstance(parameter_types, str):
+            parameter_types = (parameter_types,)
+        parameter_types = tuple(parameter_types)
+        accepted = ", ".join(repr(name) for name in SENSITIVITY_PARAMETER_TYPES)
+        for name in parameter_types:
+            if name not in SENSITIVITY_PARAMETER_TYPES:
+                raise ValidationError(
+                    f"parameter_types must be drawn from {accepted}, got {name!r}"
+                )
+        if not parameter_types:
+            raise ValidationError(f"parameter_types must name at least one of {accepted}")
+        parameter_types = tuple(dict.fromkeys(parameter_types))
+
+        baseline_ev = self.expected_value()
+        results = []
+
+        def record(label, key, target, original):
+            return {
+                "parameter": label,
+                key: target,
+                "original_value": original,
+            }
+
+        def finish(entry, increased_ev, decreased_ev):
+            sensitivity = (abs(increased_ev - baseline_ev) + abs(decreased_ev - baseline_ev)) / 2
+            entry.update(
+                {
+                    "baseline_ev": baseline_ev,
+                    "increased_ev": increased_ev,
+                    "decreased_ev": decreased_ev,
+                    "sensitivity": sensitivity,
+                    "elasticity": self._elasticity(sensitivity, baseline_ev),
+                }
+            )
+            results.append(entry)
+
+        up, down = 1 + perturbation, 1 - perturbation
+
+        if "edge_weights" in parameter_types:
+            for edge in sorted(self.edge_list(), key=self._edge_sort_key):
+                found = self._numeric_weight(edge)
+                if found is None or found[1] == 0 or len(edge.from_node.outcomes) <= 1:
+                    continue
+                index, weight = found
+                entry = record(
+                    f"Edge {edge.from_node.node_id}→{edge.to_node.node_id} weight",
+                    "edge",
+                    edge,
+                    weight,
+                )
+                with _perturbed_edge_weight(edge, index, weight * up):
+                    increased_ev = self.expected_value()
+                with _perturbed_edge_weight(edge, index, weight * down):
+                    decreased_ev = self.expected_value()
+                finish(entry, increased_ev, decreased_ev)
+
+        if "costs" in parameter_types:
+            for edge in sorted(self.edge_list(), key=self._edge_sort_key):
+                if edge.cost == 0:
+                    continue
+                entry = record(
+                    f"Edge {edge.from_node.node_id}→{edge.to_node.node_id} cost",
+                    "edge",
+                    edge,
+                    edge.cost,
+                )
+                with _perturbed_edge_cost(edge, edge.cost * up):
+                    increased_ev = self.expected_value()
+                with _perturbed_edge_cost(edge, edge.cost * down):
+                    decreased_ev = self.expected_value()
+                finish(entry, increased_ev, decreased_ev)
+
+        if "payoffs" in parameter_types:
+            for node in sorted(self.node_list(), key=self._node_sort_key):
+                if node.payoff == 0:
+                    continue
+                entry = record(f"Node {node.node_id} payoff", "node", node, node.payoff)
+                with node.scaled_payoff(up):
+                    increased_ev = self.expected_value()
+                with node.scaled_payoff(down):
+                    decreased_ev = self.expected_value()
+                finish(entry, increased_ev, decreased_ev)
+
+        results.sort(key=lambda x: x["sensitivity"], reverse=True)
+
+        return {
+            "baseline_ev": baseline_ev,
+            "analysis_seed": None,
+            "parameter_types": parameter_types,
+            "perturbation": perturbation,
+            "max_params": None,
+            "candidate_parameters": len(results),
+            "parameters_analyzed": len(results),
+            "results": results,
+        }
+
     def identify_critical_parameters(
         self, num_simulations=1000, perturbation=0.1, top_n=5, max_params=10
     ):
