@@ -205,7 +205,7 @@ class Node:
             return memo[self]
 
         if self.outcomes == []:
-            tree = {self.__repr__(): None}
+            tree: dict = {self.__repr__(): None}
         else:
             blob = {}
             for x in self.outcomes:

@@ -153,7 +153,8 @@ class Graph:
     """
 
     def __init__(self, random_state=None):
-        self.start_node = None
+        # None until from_dict/from_adj_matrix builds a model; methods that need one check or rely on it
+        self.start_node: Node = None  # type: ignore[assignment]
         self.rng = None if random_state is None else np.random.default_rng(random_state)
 
     def from_dict(self, d):
@@ -195,7 +196,7 @@ class Graph:
                 )
             node_types[node_id] = node_type
 
-        successors = {node_id: [] for node_id in d}
+        successors: dict = {node_id: [] for node_id in d}
         for node_id, node_spec in d.items():
             for edge in node_spec["after"]:
                 predecessor_id = edge["node_id"]
@@ -239,6 +240,7 @@ class Graph:
             node_spec = d[key]
             node_type = node_types[key]
 
+            new_node: Node
             if node_type == "uniform":
                 new_node = UniformNode(
                     key,
@@ -530,7 +532,7 @@ class Graph:
         if np.any(A < 0):
             raise ValidationError("Adjacency matrix entries must be non-negative")
 
-        dict_spec = {}
+        dict_spec: dict = {}
         for c_idx in range(A.shape[1]):
             after = []
             for r_idx in range(A.shape[0]):
@@ -631,7 +633,7 @@ class Graph:
                 f"{caller} requires a built graph; call from_dict() or from_adj_matrix() first"
             )
 
-        memo = {}
+        memo: dict = {}
 
         def visit(node):
             if node in memo:
@@ -792,7 +794,7 @@ class Graph:
         start = self.start_node
         options = {}
         for key, (edge, _) in zip(self._option_keys(), start.outcomes):
-            distribution = {}
+            distribution: dict = {}
             for outcome, mass in visit(edge.to_node).items():
                 shifted = outcome + start.payoff - edge.cost
                 if not (isinstance(shifted, numbers.Real) and math.isfinite(shifted)):
@@ -1004,7 +1006,7 @@ class Graph:
         :return: list of keys, positionally aligned with ``self.start_node.outcomes``
         """
 
-        seen = {}
+        seen: dict = {}
         keys = []
         for outcome in self.start_node.outcomes:
             node_id = outcome[0].to_node.node_id
@@ -1454,14 +1456,14 @@ class Graph:
         if parameter_type == "edge_weights":
             # Analyze each edge's weight sensitivity; edges without a usable numeric
             # weight are not candidates at all, so they never consume a max_params slot
-            candidates = []
+            weight_candidates = []
             for edge in sorted(self.edge_list(), key=self._edge_sort_key):
                 found = self._numeric_weight(edge)
                 if found is not None and found[1] != 0 and len(edge.from_node.outcomes) > 1:
-                    candidates.append((edge, found[0], found[1]))
-            candidate_count = len(candidates)
+                    weight_candidates.append((edge, found[0], found[1]))
+            candidate_count = len(weight_candidates)
 
-            for edge, edge_index, original_weight in candidates[:max_params]:
+            for edge, edge_index, original_weight in weight_candidates[:max_params]:
                 # Test increased weight
                 with _perturbed_edge_weight(edge, edge_index, original_weight * (1 + perturbation)):
                     increased_ev = self._paired_expected_value(num_simulations, analysis_seed)
@@ -1491,10 +1493,10 @@ class Graph:
         elif parameter_type == "costs":
             # Analyze edge cost sensitivity; zero-cost edges are not candidates
             edges = sorted(self.edge_list(), key=self._edge_sort_key)
-            candidates = [e for e in edges if e.cost != 0]
-            candidate_count = len(candidates)
+            cost_candidates = [e for e in edges if e.cost != 0]
+            candidate_count = len(cost_candidates)
 
-            for edge in candidates[:max_params]:
+            for edge in cost_candidates[:max_params]:
                 original_cost = edge.cost
 
                 # Test increased cost
@@ -1525,10 +1527,10 @@ class Graph:
         elif parameter_type == "payoffs":
             # Analyze node payoff sensitivity
             nodes = sorted(self.node_list(), key=self._node_sort_key)
-            candidates = [n for n in nodes if n.payoff != 0]
-            candidate_count = len(candidates)
+            payoff_candidates = [n for n in nodes if n.payoff != 0]
+            candidate_count = len(payoff_candidates)
 
-            for node in candidates[:max_params]:
+            for node in payoff_candidates[:max_params]:
                 original_payoff = node.payoff
 
                 # Test increased payoff
