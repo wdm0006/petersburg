@@ -103,6 +103,7 @@ jobs:
           examples/distribution_nodes_demo.py \
           examples/estimation/estimator_example.py \
           examples/estimation/multimode_estimation.py \
+          examples/exact_analysis.py \
           examples/necktie_paradox.py \
           examples/outsourcing.py \
           examples/print.py \
