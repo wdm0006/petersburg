@@ -219,6 +219,14 @@ report = g.identify_critical_parameters(top_n=10)
 figure = g.plot_sensitivity(report, top_n=5, filename="sensitivity.png", color="steelblue")
 ```
 
+For numeric-weight graphs, `exact_sensitivity` ranks the same parameters by re-evaluating
+the exact `expected_value()` at ±`perturbation`. It needs no simulations, returns identical
+numbers on every call and seed, and its report works with `plot_sensitivity`.
+
+```python
+report = g.exact_sensitivity(perturbation=0.1)
+```
+
 ### Visualizing the Graph
 
 ```python
