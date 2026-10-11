@@ -175,3 +175,104 @@ class TestOutcomeDistribution(unittest.TestCase):
         g.start_node.add_outcome(Node(1, 0.3))
         g.start_node.add_outcome(Node(2, 0.1 + 0.2))
         self.assertEqual(g.outcome_distribution(), {0.3: 0.5, 0.1 + 0.2: 0.5})
+
+
+def _options_graph(seed=None):
+    return Graph(random_state=seed).from_dict(
+        {
+            1: {"payoff": 1, "after": []},
+            2: {"payoff": 10, "after": [{"node_id": 1, "cost": 2}]},
+            3: {"payoff": 4, "after": [{"node_id": 1, "cost": 1}]},
+            4: {"payoff": 0, "after": [{"node_id": 2, "weight": 3}]},
+            5: {"payoff": 8, "after": [{"node_id": 2, "cost": 4, "weight": 1}]},
+        }
+    )
+
+
+class TestOptionDistributions(unittest.TestCase):
+    def test_hand_computed_pmfs_and_means(self):
+        g = _options_graph()
+        options = g.option_distributions()
+        self.assertEqual(options, {2: {9: 0.75, 13: 0.25}, 3: {4: 1.0}})
+        expected = g.expected_options()
+        for key, pmf in options.items():
+            self.assertEqual(sum(pmf.values()), 1)
+            self.assertEqual(sum(x * p for x, p in pmf.items()), expected[key])
+
+    def test_parallel_first_edges_have_separate_keys(self):
+        g = Graph().from_dict(
+            {
+                1: {"payoff": 5, "after": []},
+                2: {
+                    "payoff": 10,
+                    "after": [{"node_id": 1, "cost": 2}, {"node_id": 1, "cost": 80}],
+                },
+                3: {"payoff": 0, "after": [{"node_id": 2, "weight": 1}]},
+            }
+        )
+        self.assertEqual(g.option_distributions(), {2: {13: 1.0}, (2, 1): {-65: 1.0}})
+        self.assertEqual(list(g.option_distributions()), list(g.expected_options()))
+
+    def test_start_weights_do_not_select_options(self):
+        g = _options_graph()
+        g.start_node.outcomes[0] = (g.start_node.outcomes[0][0], 0)
+        self.assertEqual(g.option_distributions(), {2: {9: 0.75, 13: 0.25}, 3: {4: 1.0}})
+        g.start_node.outcomes[1] = (g.start_node.outcomes[1][0], 0)
+        self.assertEqual(g.option_distributions()[3], {4: 1.0})
+
+    def test_terminal_start_is_empty(self):
+        g = Graph().from_dict({1: {"payoff": 3, "after": []}})
+        self.assertEqual(g.option_distributions(), {})
+
+    def test_unsupported_models_raise_and_rng_untouched(self):
+        g = _options_graph(7)
+        control = _options_graph(7)
+        hidden = Graph().from_dict({9: {"type": "gaussian", "after": []}}).start_node
+        g.start_node.add_outcome(hidden, weight=0)
+        with self.assertRaisesRegex(ValidationError, "option_distributions requires fixed"):
+            g.option_distributions()
+        g2 = _options_graph()
+        g2.start_node.add_outcome(Node(9), weight=Mock(predict_proba=Mock()))
+        with self.assertRaisesRegex(ValidationError, "weight"):
+            g2.option_distributions()
+        g3 = _options_graph(7)
+        with patch.object(Node, "weighted_choice", side_effect=AssertionError("draw")):
+            g3.option_distributions()
+        self.assertEqual(
+            [g3.get_outcome() for _ in range(50)], [control.get_outcome() for _ in range(50)]
+        )
+
+    def test_support_cap_raises_without_partial_result(self):
+        g = _options_graph()
+        with self.assertRaisesRegex(ValidationError, "max_outcomes=1"):
+            g.option_distributions(1)
+        self.assertEqual(len(g.option_distributions(2)[2]), 2)
+        for cap in (True, 0, 1.5, None):
+            with self.assertRaisesRegex(ValidationError, "max_outcomes"):
+                g.option_distributions(cap)
+
+    def test_option_cap_applies_to_shifted_pmf(self):
+        g = Graph().from_dict(
+            {
+                1: {"payoff": 0, "after": []},
+                2: {"payoff": 1, "after": [{"node_id": 1}]},
+            }
+        )
+        g.start_node.outcomes[0][0].to_node.add_outcome(Node(5, 1))
+        g.start_node.outcomes[0][0].to_node.add_outcome(Node(6, 2))
+        with self.assertRaisesRegex(ValidationError, "Node 2 .*max_outcomes=1"):
+            g.option_distributions(1)
+
+    def test_converging_dag_scale(self):
+        spec = {0: {"payoff": 1, "after": []}}
+        previous = [0]
+        for layer in range(30):
+            ids = [2 * layer + 1, 2 * layer + 2]
+            for node_id in ids:
+                spec[node_id] = {"payoff": 1, "after": [{"node_id": parent} for parent in previous]}
+            previous = ids
+        g = Graph().from_dict(spec)
+        start = time.monotonic()
+        options = g.option_distributions(1)
+        self.assertLess(time.monotonic() - start, 2)
+        self.assertEqual(options, {1: {31: 1.0}, 2: {31: 1.0}})

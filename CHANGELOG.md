@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Graph.option_distributions(max_outcomes=10000)` returns the exact outcome distribution of
+  each initial option (same keys as `get_options`/`expected_options`) for fixed-payoff graphs,
+  so tail risk can be compared between options without sampling.
 - `Graph.outcome_distribution(max_outcomes=10000)` computes exact fixed-payoff outcome
   masses without sampling, merging exactly equal outcomes and bounding each node's support.
   Unsupported reachable models and support overflow raise `ValidationError`.

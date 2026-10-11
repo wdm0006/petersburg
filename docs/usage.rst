@@ -153,6 +153,15 @@ separate atoms, with no rounding or binning.
     masses = g.outcome_distribution()  # {-2: 0.25, 13: 0.75}
     p_loss = sum(p for payoff, p in masses.items() if payoff < 0)  # 0.25
 
+:meth:`~petersburg.graph.Graph.option_distributions` returns the same kind of distribution
+for each initial option, keyed like ``get_options()`` and ``expected_options()``. Each first
+edge is forced regardless of its start weight; the start payoff and edge cost are included.
+Restrictions and the ``max_outcomes`` cap match ``outcome_distribution``.
+
+.. code-block:: python
+
+    g.option_distributions()  # {2: {13: 1.0}, 3: {-2: 1.0}}
+
 Serialization
 -------------
 
