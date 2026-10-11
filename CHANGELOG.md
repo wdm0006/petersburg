@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `mypy petersburg/` now reports zero errors: distinct variable names per branch in
+  `Graph.analyze_sensitivity`, and annotations on a few untyped locals. No behaviour change.
+  `py.typed` and a blocking CI type check are not part of this change.
+
 ### Added
 
 - `Graph.option_distributions(max_outcomes=10000)` returns the exact outcome distribution of
