@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `examples/exact_analysis.py` walks a launch-or-hold model through the exact evaluators
+  (expected value, per-option values, std, loss probability, exact sensitivity), a Mermaid
+  export and a tornado chart saved to a temporary directory; it runs in the CI examples job.
+
 - `Graph.option_distributions(max_outcomes=10000)` returns the exact outcome distribution of
   each initial option (same keys as `get_options`/`expected_options`) for fixed-payoff graphs,
   so tail risk can be compared between options without sampling.

@@ -54,6 +54,16 @@ A variant of the two envelope problem with ties.
 .venv/bin/python3 examples/necktie_paradox.py
 ```
 
+### [exact_analysis.py](exact_analysis.py)
+End-to-end deterministic workflow on a launch-or-hold decision.
+
+**Key concept**: Build a fixed-payoff model, export Mermaid, then compute exact expected value, per-option values, standard deviation, loss probability and an exact sensitivity ranking (with a tornado chart saved to a temporary directory) with no sampling.
+
+**Run it**:
+```bash
+MPLBACKEND=Agg .venv/bin/python3 examples/exact_analysis.py
+```
+
 ### [automatic_sensitivity_demo.py](automatic_sensitivity_demo.py)
 Demonstrates the framework's automatic sensitivity analysis feature.
 
