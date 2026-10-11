@@ -395,6 +395,15 @@ masses = g.outcome_distribution()  # {-2: 0.25, 13: 0.75}
 p_loss = sum(p for payoff, p in masses.items() if payoff < 0)  # 0.25
 ```
 
+`Graph.option_distributions(max_outcomes=10000)` returns the same kind of distribution for
+each initial option, keyed like `get_options()`/`expected_options()`. Each first edge is forced
+regardless of start weight, and the start payoff and edge cost are included. Restrictions and
+the support cap match `outcome_distribution`.
+
+```python
+g.option_distributions()  # {2: {13: 1.0}, 3: {-2: 1.0}}
+```
+
 Serialization
 =============
 

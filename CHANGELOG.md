@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Graph.option_distributions(max_outcomes=10000)` returns the exact outcome distribution of
+  each initial option (same keys as `get_options`/`expected_options`) for fixed-payoff graphs,
+  so tail risk can be compared between options without sampling.
+
 - `Graph.exact_sensitivity(perturbation=0.1, parameter_types=SENSITIVITY_PARAMETER_TYPES)`
   ranks edge weights, costs and payoffs by re-evaluating the exact `expected_value()` at
   `±perturbation`, with no sampling, so results are identical across calls and seeds. The
