@@ -78,6 +78,9 @@ Documentation = "https://github.com/wdm0006/petersburg/blob/master/README.md"
 [tool.setuptools]
 packages = ["petersburg"]
 
+[tool.setuptools.package-data]
+petersburg = ["py.typed"]
+
 # Black configuration
 [tool.black]
 line-length = 100

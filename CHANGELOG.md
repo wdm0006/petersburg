@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Ship a PEP 561 `py.typed` marker so downstream mypy/pyright use Petersburg's inline types; CI now
+  type-checks a snippet against the installed wheel.
+
 ### Changed
+
+- The `mypy petersburg/` CI step is a blocking gate (no `continue-on-error`).
 
 - `mypy petersburg/` now reports zero errors: distinct variable names per branch in
   `Graph.analyze_sensitivity`, and annotations on a few untyped locals. No behaviour change.
