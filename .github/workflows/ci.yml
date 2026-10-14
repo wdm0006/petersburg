@@ -46,7 +46,6 @@ jobs:
     - name: Run mypy type checking
       run: |
         uv run mypy petersburg/
-      continue-on-error: true  # Don't fail build on type errors initially
 
     - name: Run tests with coverage
       run: |
@@ -149,6 +148,18 @@ jobs:
         cp examples/sensitivity_tornado.py /tmp/petersburg-tornado.py
         cd /tmp
         /tmp/petersburg-viz/bin/python petersburg-tornado.py
+
+    - name: Check py.typed is shipped and honoured by mypy
+      run: |
+        uv build
+        unzip -l dist/*.whl | grep -q 'petersburg/py.typed'
+        tar tzf dist/*.tar.gz | grep -q 'petersburg/py.typed'
+        uv venv /tmp/petersburg-typed
+        uv pip install --python /tmp/petersburg-typed/bin/python "$(echo dist/*.whl)" mypy
+        mkdir /tmp/typed-check
+        cp examples/typed_usage_check.py /tmp/typed-check/snippet.py
+        cd /tmp/typed-check
+        /tmp/petersburg-typed/bin/python -m mypy snippet.py
 
   build:
     runs-on: ubuntu-latest
