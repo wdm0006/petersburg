@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+<<<<<<< HEAD
 - Publish a draft 2020-12 JSON Schema for version-1 graph models, with serializer contract tests.
 
 - `Graph.option_statistics(alpha=0.05, max_outcomes=10000)` summarises each initial option from
@@ -16,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (smallest outcome whose cumulative mass reaches alpha) and `cvar_alpha` (probability-weighted
   mean of outcomes at or below it, whole boundary atom included).
 
+=======
+- Decision nodes: `from_dict` accepts `"decision": True` on any node, and `Graph.optimal_policy()` /
+  `Graph.apply_policy()` find and fix the exact optimal choice at every stage by backward induction.
+  Exact evaluators and simulators raise `ValidationError` on a graph with unresolved decision nodes;
+  `to_dict`/`to_json` round-trip the flag and omit it when false.
+>>>>>>> 78bf1c0 (feat(graph): add decision nodes and Graph.optimal_policy()/apply_policy())
 - Ship a PEP 561 `py.typed` marker so downstream mypy/pyright use Petersburg's inline types; CI now
   type-checks a snippet against the installed wheel.
 

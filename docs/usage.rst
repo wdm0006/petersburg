@@ -169,6 +169,7 @@ Restrictions and the ``max_outcomes`` cap match ``outcome_distribution``.
 
     g.option_distributions()  # {2: {13: 1.0}, 3: {-2: 1.0}}
 
+<<<<<<< HEAD
 :meth:`~petersburg.graph.Graph.option_statistics` reduces those distributions, in one call, to
 ``mean``, ``std`` (population), ``p_loss``, ``var_alpha`` and ``cvar_alpha`` per option.
 ``var_alpha`` is the smallest outcome whose cumulative probability reaches ``alpha`` (a
@@ -180,6 +181,30 @@ whole boundary atom.
 
     g.option_statistics(alpha=0.5)[3]
     # {'mean': -2.0, 'std': 0.0, 'p_loss': 1.0, 'var_alpha': -2.0, 'cvar_alpha': -2.0}
+=======
+Decision nodes
+--------------
+
+A node with ``"decision": True`` lets the decision-maker choose its outgoing edge; its edge
+weights are ignored. :meth:`~petersburg.graph.Graph.optimal_policy` returns the exact optimal
+value and the choice at every reachable decision node (keyed like ``get_options()``), and
+:meth:`~petersburg.graph.Graph.apply_policy` returns a new graph with those choices fixed, so
+the exact evaluators and simulators work on it. Calling them on a graph that still contains
+decision nodes raises :class:`~petersburg.exceptions.ValidationError`.
+
+.. code-block:: python
+
+    g = Graph().from_dict({
+        1: {"decision": True, "after": []},
+        2: {"payoff": 8, "after": [{"node_id": 1}]},
+        3: {"payoff": 2, "decision": True, "after": [{"node_id": 1, "cost": 1}]},
+        4: {"payoff": 16, "after": [{"node_id": 3, "cost": 4}]},
+        5: {"payoff": 0, "after": [{"node_id": 3}]},
+    })
+    best = g.optimal_policy()  # {"value": 13.0, "policy": {1: 3, 3: 4}}
+    resolved = g.apply_policy(best["policy"])  # a new graph with those choices fixed
+    resolved.expected_value()  # 13.0; variance(), exact_sensitivity() and simulation work too
+>>>>>>> 78bf1c0 (feat(graph): add decision nodes and Graph.optimal_policy()/apply_policy())
 
 Serialization
 -------------
