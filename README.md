@@ -404,6 +404,17 @@ the support cap match `outcome_distribution`.
 g.option_distributions()  # {2: {13: 1.0}, 3: {-2: 1.0}}
 ```
 
+`Graph.option_statistics(alpha=0.05, max_outcomes=10000)` reduces those distributions, in one
+call, to `mean`, `std` (population), `p_loss`, `var_alpha` and `cvar_alpha` per option.
+`var_alpha` is the smallest outcome whose cumulative probability reaches `alpha` (a discrete
+quantile, unlike the interpolated percentiles of `get_options(distribution=True)`), and
+`cvar_alpha` is the probability-weighted mean of all outcomes at or below it, including the
+whole boundary atom.
+
+```python
+g.option_statistics(alpha=0.5)[3]  # {'mean': -2.0, 'std': 0.0, 'p_loss': 1.0, 'var_alpha': -2.0, 'cvar_alpha': -2.0}
+```
+
 Serialization
 =============
 

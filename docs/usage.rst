@@ -169,6 +169,18 @@ Restrictions and the ``max_outcomes`` cap match ``outcome_distribution``.
 
     g.option_distributions()  # {2: {13: 1.0}, 3: {-2: 1.0}}
 
+:meth:`~petersburg.graph.Graph.option_statistics` reduces those distributions, in one call, to
+``mean``, ``std`` (population), ``p_loss``, ``var_alpha`` and ``cvar_alpha`` per option.
+``var_alpha`` is the smallest outcome whose cumulative probability reaches ``alpha`` (a
+discrete quantile, unlike the interpolated percentiles of ``get_options(distribution=True)``);
+``cvar_alpha`` is the probability-weighted mean of all outcomes at or below it, including the
+whole boundary atom.
+
+.. code-block:: python
+
+    g.option_statistics(alpha=0.5)[3]
+    # {'mean': -2.0, 'std': 0.0, 'p_loss': 1.0, 'var_alpha': -2.0, 'cvar_alpha': -2.0}
+
 Serialization
 -------------
 
