@@ -49,6 +49,7 @@ dev = [
     "ruff>=0.1.0",
     "black>=23.0.0",
     "mypy>=1.0.0",
+    "jsonschema>=4.0.0",
 ]
 visualization = [
     "networkx>=2.6.0",
@@ -79,7 +80,7 @@ Documentation = "https://github.com/wdm0006/petersburg/blob/master/README.md"
 packages = ["petersburg"]
 
 [tool.setuptools.package-data]
-petersburg = ["py.typed"]
+petersburg = ["py.typed", "schemas/*.json"]
 
 # Black configuration
 [tool.black]

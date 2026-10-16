@@ -191,6 +191,27 @@ integer and string ids keep their type. Reading and writing files is left to the
     text = g.to_json(indent=2)
     assert Graph().from_json(text).to_dict() == g.to_dict()
 
+The draft 2020-12 `JSON Schema for version 1
+<https://github.com/wdm0006/petersburg/blob/master/petersburg/schemas/petersburg-graph-v1.schema.json>`_
+is shipped as ``petersburg/schemas/petersburg-graph-v1.schema.json`` in the package.
+It describes the explicit serializer output: ``format``, ``version``, and ``nodes``;
+each node requires ``id``, ``type``, its type-specific payoff parameters, and ``after``.
+Predecessor records require ``node_id``, ``cost``, and ``weight``; parallel edges are allowed.
+The schema checks structure only. Acyclicity, a single start, unique ids, valid references,
+finite values, and distribution constraints remain loader/node validation responsibilities.
+Always use ``from_json`` to reconstruct a validated graph after a schema check.
+
+External tools can use the schema file without importing Petersburg. Python callers can
+locate the installed copy with the standard library:
+
+.. code-block:: python
+
+    from importlib.resources import files
+
+    schema_text = files("petersburg").joinpath(
+        "schemas/petersburg-graph-v1.schema.json"
+    ).read_text(encoding="utf-8")
+
 Prediction
 ----------
 

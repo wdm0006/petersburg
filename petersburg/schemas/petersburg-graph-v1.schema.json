@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Petersburg graph version 1",
+  "description": "Structure-only schema for the version-1 petersburg-graph serialization format. Semantic rules, including acyclicity, a single start node, valid references, unique ids, finite values and distribution parameter constraints, remain the responsibility of from_json/from_dict and node validation.",
+  "type": "object",
+  "required": [
+    "format",
+    "version",
+    "nodes"
+  ],
+  "properties": {
+    "format": {
+      "const": "petersburg-graph"
+    },
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "after",
+              "payoff"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/nodeId"
+              },
+              "type": {
+                "const": "fixed"
+              },
+              "payoff": {
+                "type": "number"
+              },
+              "after": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/predecessor"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "after",
+              "min_payoff",
+              "max_payoff"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/nodeId"
+              },
+              "type": {
+                "const": "uniform"
+              },
+              "min_payoff": {
+                "type": "number"
+              },
+              "max_payoff": {
+                "type": "number"
+              },
+              "after": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/predecessor"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "after",
+              "mean",
+              "std"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/nodeId"
+              },
+              "type": {
+                "const": "gaussian"
+              },
+              "mean": {
+                "type": "number"
+              },
+              "std": {
+                "type": "number"
+              },
+              "after": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/predecessor"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "after",
+              "mu",
+              "sigma"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/nodeId"
+              },
+              "type": {
+                "const": "lognormal"
+              },
+              "mu": {
+                "type": "number"
+              },
+              "sigma": {
+                "type": "number"
+              },
+              "after": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/predecessor"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "after",
+              "scale",
+              "alpha"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/nodeId"
+              },
+              "type": {
+                "const": "powerlaw"
+              },
+              "scale": {
+                "type": "number"
+              },
+              "alpha": {
+                "type": "number"
+              },
+              "after": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/predecessor"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "nodeId": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "predecessor": {
+      "type": "object",
+      "required": [
+        "node_id",
+        "cost",
+        "weight"
+      ],
+      "properties": {
+        "node_id": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "cost": {
+          "type": "number"
+        },
+        "weight": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
