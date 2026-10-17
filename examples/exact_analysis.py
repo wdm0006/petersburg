@@ -40,6 +40,7 @@ def analyze(graph, directory):
             option: sum(p for outcome, p in dist.items() if outcome < 0)
             for option, dist in graph.option_distributions().items()
         },
+        "option_statistics": graph.option_statistics(alpha=0.25),
         "ranking": [(r["parameter"], r["sensitivity"]) for r in report["results"]],
         "mermaid": graph.to_mermaid(),
     }
@@ -55,6 +56,11 @@ def main():
         print(f"P(loss):        {facts['p_loss']:.3f}")
         for option, value in facts["options"].items():
             print(f"Option {option}: EV {value:.2f}, P(loss) {facts['option_p_loss'][option]:.3f}")
+        for option, stats in facts["option_statistics"].items():
+            print(
+                f"Option {option}: std {stats['std']:.2f}, "
+                f"VaR(25%) {stats['var_alpha']:.2f}, CVaR(25%) {stats['cvar_alpha']:.2f}"
+            )
         print("Exact sensitivity ranking (+/-25%):")
         for parameter, sensitivity in facts["ranking"]:
             print(f"  {parameter}: {sensitivity:.3f}")

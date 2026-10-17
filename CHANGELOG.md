@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Publish a draft 2020-12 JSON Schema for version-1 graph models, with serializer contract tests.
 
+- `Graph.option_statistics(alpha=0.05, max_outcomes=10000)` summarises each initial option from
+  its exact distribution: `mean`, population `std`, `p_loss`, and the discrete `var_alpha`
+  (smallest outcome whose cumulative mass reaches alpha) and `cvar_alpha` (probability-weighted
+  mean of outcomes at or below it, whole boundary atom included).
+
 - Ship a PEP 561 `py.typed` marker so downstream mypy/pyright use Petersburg's inline types; CI now
   type-checks a snippet against the installed wheel.
 

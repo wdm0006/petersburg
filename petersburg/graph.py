@@ -809,6 +809,69 @@ class Graph:
             options[key] = dict(sorted(distribution.items()))
         return options
 
+    def option_statistics(self, alpha=0.05, max_outcomes=10000):
+        """
+        Exact probability-weighted risk summary of each start-node option.
+
+        Returns the keys of :meth:`option_distributions`, each mapped to a dict with ``mean``,
+        ``std`` (population standard deviation), ``p_loss`` (probability of a negative net
+        payoff), ``var_alpha`` and ``cvar_alpha``. Everything is derived from one
+        :meth:`option_distributions` call, so its restrictions, support cap and errors apply.
+
+        ``var_alpha`` is the smallest supported outcome whose cumulative probability reaches
+        ``alpha`` (``alpha=0`` gives the minimum, ``alpha=1`` the maximum), a discrete quantile
+        rather than the interpolated percentile of :meth:`get_options`. ``cvar_alpha`` is the
+        probability-weighted mean of all outcomes at or below ``var_alpha``, including the
+        whole boundary atom (not a fractional-mass expected shortfall), so
+        ``cvar_alpha <= var_alpha``. Both are in outcome space.
+
+        >>> from petersburg import Graph
+        >>> g = Graph().from_dict({
+        ...     1: {"after": []},
+        ...     2: {"after": [{"node_id": 1}]},
+        ...     3: {"payoff": -10, "after": [{"node_id": 2, "weight": 1}]},
+        ...     4: {"payoff": 2, "after": [{"node_id": 2, "weight": 3}]},
+        ... })
+        >>> g.option_statistics(alpha=0.5)[2]["cvar_alpha"]
+        -1.0
+
+        :param alpha: Quantile level, a finite real in [0, 1] (bool is excluded)
+        :param max_outcomes: Positive integer support cap, as in :meth:`option_distributions`
+        :return: dict mapping option keys to dicts of floats; empty for a terminal start node
+        :raises ValidationError: If alpha is invalid (checked before any distribution is
+            computed), or under the conditions of :meth:`option_distributions`
+        """
+        if (
+            isinstance(alpha, bool)
+            or not isinstance(alpha, numbers.Real)
+            or not math.isfinite(alpha)
+            or not 0 <= float(alpha) <= 1
+        ):
+            raise ValidationError(f"alpha must be a finite real number in [0, 1], got {alpha!r}")
+        alpha_level = float(alpha)
+
+        statistics = {}
+        for key, masses in self.option_distributions(max_outcomes=max_outcomes).items():
+            outcomes = list(masses)  # ascending
+            mean = sum(x * p for x, p in masses.items())
+            variance = sum(p * (x - mean) ** 2 for x, p in masses.items())
+            cumulative = 0.0
+            var_alpha = outcomes[-1]
+            for x in outcomes:
+                cumulative += masses[x]
+                if cumulative >= alpha_level:
+                    var_alpha = x
+                    break
+            tail = [(x, p) for x, p in masses.items() if x <= var_alpha]
+            statistics[key] = {
+                "mean": float(mean),
+                "std": math.sqrt(variance),
+                "p_loss": float(sum(p for x, p in masses.items() if x < 0)),
+                "var_alpha": float(var_alpha),
+                "cvar_alpha": float(sum(x * p for x, p in tail) / sum(p for _, p in tail)),
+            }
+        return statistics
+
     def outcome_distribution(self, max_outcomes=10000):
         """
         Exact finite-support distribution of net payoffs, without draws or RNG changes.
