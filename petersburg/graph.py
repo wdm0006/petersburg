@@ -8,6 +8,7 @@
 
 """
 
+import copy
 import json
 import math
 import numbers
@@ -16,6 +17,7 @@ from contextlib import contextmanager
 
 import numpy as np
 
+from petersburg.edges import Edge
 from petersburg.exceptions import SpecValidationError, ValidationError
 from petersburg.nodes import (
     GaussianNode,
@@ -170,6 +172,11 @@ class Graph:
         - 'lognormal': LogNormalNode with 'mu' and 'sigma'
         - 'powerlaw': PowerLawNode with 'scale' and 'alpha'
 
+        Any node may also set ``"decision": True``: the decision-maker, not a weighted draw,
+        chooses its outgoing edge (its edge weights are ignored). Graphs holding decision nodes
+        must be resolved with :meth:`optimal_policy` and :meth:`apply_policy` before they are
+        evaluated or simulated.
+
         :param d:
         :raises SpecValidationError: If the specification is not a dict of node specs, references
             unknown nodes, contains a cycle, or does not have exactly one starting node
@@ -195,6 +202,11 @@ class Graph:
                     f"accepted types are: {accepted}"
                 )
             node_types[node_id] = node_type
+            if not isinstance(node_spec.get("decision", False), bool):
+                raise SpecValidationError(
+                    f"Node {node_id} 'decision' must be a bool, got "
+                    f"{type(node_spec['decision']).__name__}"
+                )
 
         successors: dict = {node_id: [] for node_id in d}
         for node_id, node_spec in d.items():
@@ -262,6 +274,8 @@ class Graph:
                 )
             else:  # fixed
                 new_node = Node(key, payoff=node_spec.get("payoff", 0), rng=self.rng)
+
+            new_node.is_decision = node_spec.get("decision", False)
 
             if not node_spec["after"]:
                 if node is not None:
@@ -338,6 +352,8 @@ class Graph:
         spec = {}
         for node in self._stable_node_order():
             node_spec = self._payoff_spec(node)
+            if node.is_decision:
+                node_spec["decision"] = True
             node_spec["after"] = [
                 {
                     "node_id": edge.from_node.node_id,
@@ -537,7 +553,7 @@ class Graph:
             after = []
             for r_idx in range(A.shape[0]):
                 if A[r_idx, c_idx] != 0.0 and not np.isnan(A[r_idx, c_idx]):
-                    row_sum = np.nansum(A[r_idx, :])
+                    row_sum: float = np.nansum(A[r_idx, :])
                     if row_sum != 0.0:
                         weight = A[r_idx, c_idx] / row_sum
                     else:
@@ -592,6 +608,148 @@ class Graph:
 
         return self.from_dict(dict_spec)
 
+    def _require_no_decisions(self, caller):
+        """Reject graphs that still contain decision nodes; they must be resolved first."""
+        if self.start_node is None:
+            return  # type: ignore[unreachable]
+        unresolved = [n.node_id for n in self._stable_node_order() if n.is_decision]
+        if unresolved:
+            raise ValidationError(
+                f"{caller} cannot evaluate a graph with unresolved decision nodes "
+                f"{unresolved!r}; use optimal_policy() to find the best choices and "
+                "apply_policy() to build a graph with those choices fixed"
+            )
+
+    def optimal_policy(self):
+        """
+        Exact optimal choice at every decision node, by backward induction over the DAG.
+
+        A node marked ``"decision": True`` lets the decision-maker pick its outgoing edge; its
+        edge weights are ignored. At a decision node the value is its mean payoff plus the
+        best ``EV(child) - cost`` over its edges, and ties go to the earliest edge in outcome
+        order. Chance nodes use the :meth:`expected_value` recurrence. Every decision node
+        structurally reachable from the start node appears in the policy (including below
+        zero-weight chance branches) except decision nodes with no outgoing edges. Each
+        choice is keyed by the destination node id, or ``(node_id, occurrence)`` for the
+        second and later parallel edges, as in :meth:`get_options`.
+
+        >>> from petersburg import Graph
+        >>> g = Graph().from_dict({
+        ...     1: {"decision": True, "after": []},
+        ...     2: {"payoff": 10, "after": [{"node_id": 1, "cost": 2}]},
+        ...     3: {"payoff": 4, "after": [{"node_id": 1}]},
+        ... })
+        >>> g.optimal_policy()
+        {'value': 8.0, 'policy': {1: 2}}
+
+        :return: ``{"value": float, "policy": {node_id: chosen destination}}``
+        :raises ValidationError: If the graph is unbuilt, a decision node's edge carries a
+            classifier weight, a chance node has classifier or invalid weights, a payoff mean
+            is infinite, or a value is not finite
+        """
+        if self.start_node is None:
+            raise ValidationError(
+                "optimal_policy requires a built graph; call from_dict() or from_adj_matrix() first"
+            )
+
+        memo: dict = {}
+        policy: dict = {}
+
+        def visit(node):
+            if node in memo:
+                return memo[node]
+            choices = node.outcomes
+            for edge, weight in choices:
+                if not is_numeric_weight(weight):
+                    which = "decision node's" if node.is_decision else "classifier-weighted"
+                    raise ValidationError(
+                        f"Node {node.node_id} has a {which} edge to node "
+                        f"{edge.to_node.node_id} with a classifier weight; optimal_policy "
+                        "requires numeric transition weights"
+                    )
+            value = self._mean_payoff(node)
+            if choices and node.is_decision:
+                best_value = -math.inf
+                best_key = None
+                for key, (edge, _) in zip(self._outcome_keys(node), choices):
+                    option = visit(edge.to_node) - edge.cost
+                    if best_key is None or option > best_value:
+                        best_value, best_key = option, key
+                value += best_value
+                policy[node.node_id] = best_key
+            elif choices:
+                total = _validate_transition_weights(node.node_id, choices)
+                for edge, weight in choices:
+                    child = visit(edge.to_node)
+                    if weight > 0:
+                        value += (weight / total) * (child - edge.cost)
+            memo[node] = value
+            return value
+
+        result = float(visit(self.start_node))
+        if not math.isfinite(result):
+            raise ValidationError(f"optimal_policy value is not finite ({result!r})")
+        return {"value": result, "policy": policy}
+
+    def apply_policy(self, policy):
+        """
+        Return a NEW graph in which every decision node follows ``policy``.
+
+        Each decision node becomes a chance node whose chosen edge has weight 1 and whose other
+        edges have weight 0, so :meth:`expected_value`, :meth:`variance`,
+        :meth:`outcome_distribution`, :meth:`exact_sensitivity` and the simulators work on it.
+        This graph is not modified. The new graph shares this graph's random generator.
+
+        :param policy: The ``"policy"`` dict from :meth:`optimal_policy` (or a hand-written
+            one in the same format)
+        :return: A new :class:`Graph` without decision nodes
+        :raises ValidationError: If the graph is unbuilt, ``policy`` is not a dict, a decision
+            node with outgoing edges has no entry, an entry names a node that is not such a
+            decision node, or a choice is not one of the node's option keys
+        """
+        if self.start_node is None:
+            raise ValidationError(
+                "apply_policy requires a built graph; call from_dict() or from_adj_matrix() first"
+            )
+        if not isinstance(policy, dict):
+            raise ValidationError(f"policy must be a dict, got {type(policy).__name__}")
+
+        nodes = self._stable_node_order()
+        deciders = {n.node_id: n for n in nodes if n.is_decision and n.outcomes}
+        missing = [node_id for node_id in deciders if node_id not in policy]
+        if missing:
+            raise ValidationError(f"policy has no choice for decision nodes {missing!r}")
+        for node_id, choice in policy.items():
+            if node_id not in deciders:
+                raise ValidationError(
+                    f"policy names node {node_id!r}, which is not a decision node"
+                )
+            if choice not in self._outcome_keys(deciders[node_id]):
+                raise ValidationError(
+                    f"policy choice {choice!r} is not an option of decision node {node_id!r}; "
+                    f"options are {self._outcome_keys(deciders[node_id])!r}"
+                )
+
+        clones = {}
+        for node in nodes:
+            clone = copy.copy(node)
+            clone.outcomes = []
+            clone.is_decision = False
+            clones[node] = clone
+        for node in nodes:
+            keys = self._outcome_keys(node) if node.is_decision else None
+            for position, (edge, weight) in enumerate(node.outcomes):
+                if keys is not None:
+                    weight = 1 if keys[position] == policy[node.node_id] else 0
+                clones[node].outcomes.append(
+                    (Edge(clones[node], clones[edge.to_node], cost=edge.cost), weight)
+                )
+
+        applied = Graph()
+        applied.rng = self.rng
+        applied.start_node = clones[self.start_node]
+        return applied
+
     def expected_value(self):
         """
         Exact expected net outcome of :meth:`get_outcome`, computed without simulation.
@@ -632,6 +790,7 @@ class Graph:
             raise ValidationError(
                 f"{caller} requires a built graph; call from_dict() or from_adj_matrix() first"
             )
+        self._require_no_decisions(caller)
 
         memo: dict = {}
 
@@ -705,6 +864,7 @@ class Graph:
             )
         if self.start_node is None:
             raise ValidationError(f"{name} requires a built graph")
+        self._require_no_decisions(name)
 
         def finite_real(value, description):
             try:
@@ -937,6 +1097,7 @@ class Graph:
             raise ValidationError(
                 "variance requires a built graph; call from_dict() or from_adj_matrix() first"
             )
+        self._require_no_decisions("variance")
 
         memo: dict[Node, tuple[float, float]] = {}
 
@@ -1032,6 +1193,7 @@ class Graph:
 
         :return:
         """
+        self._require_no_decisions("get_outcome")
         if iters is None:
             payoff, cost = self.start_node.get_outcome(feature_vector)
             return payoff - cost
@@ -1052,6 +1214,7 @@ class Graph:
         :return:
         """
 
+        self._require_no_decisions("get_outcome_node")
         node_id = self.start_node.get_outcome_node(feature_vector)
 
         return node_id
@@ -1059,19 +1222,26 @@ class Graph:
     def _option_keys(self):
         """
         Result keys for :meth:`get_options`, one per outgoing edge of the start node in
-        ``start_node.outcomes`` order.
+        ``start_node.outcomes`` order; see :meth:`_outcome_keys`.
+        """
+        return self._outcome_keys(self.start_node)
+
+    @staticmethod
+    def _outcome_keys(node):
+        """
+        One key per outgoing edge of ``node`` in ``node.outcomes`` order.
 
         An edge whose destination no earlier edge reaches is keyed by that destination's
         node id. The second and later edges to an already-seen destination are keyed by
         ``(node_id, occurrence)`` instead, where ``occurrence`` counts from 1, so parallel
         first options stay distinguishable.
 
-        :return: list of keys, positionally aligned with ``self.start_node.outcomes``
+        :return: list of keys, positionally aligned with ``node.outcomes``
         """
 
         seen: dict = {}
         keys = []
-        for outcome in self.start_node.outcomes:
+        for outcome in node.outcomes:
             node_id = outcome[0].to_node.node_id
             occurrence = seen.get(node_id, 0)
             seen[node_id] = occurrence + 1
@@ -1127,6 +1297,7 @@ class Graph:
         :return:
         """
 
+        self._require_no_decisions("get_options")
         validate_sample_count("iters", iters)
 
         if return_samples and not distribution:
@@ -1488,6 +1659,7 @@ class Graph:
         :raises ValidationError: If baseline_ev is supplied without analysis_seed
         """
 
+        self._require_no_decisions("analyze_sensitivity")
         if parameter_type not in SENSITIVITY_PARAMETER_TYPES:
             accepted = ", ".join(repr(name) for name in SENSITIVITY_PARAMETER_TYPES)
             raise ValidationError(
@@ -1654,6 +1826,7 @@ class Graph:
         :raises ValidationError: If perturbation is invalid, a parameter type is unknown,
             or the graph is unbuilt, classifier-weighted, or has non-finite moments
         """
+        self._require_no_decisions("exact_sensitivity")
         self._validate_perturbation(perturbation)
         if isinstance(parameter_types, str):
             parameter_types = (parameter_types,)
@@ -1775,6 +1948,7 @@ class Graph:
         :raises ValidationError: If perturbation is not strictly between 0 and 1
         :raises ValidationError: If num_simulations is not a positive integer
         """
+        self._require_no_decisions("identify_critical_parameters")
         self._validate_perturbation(perturbation)
         validate_sample_count("num_simulations", num_simulations)
         analysis_seed = self._analysis_seed()

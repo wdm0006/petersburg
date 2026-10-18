@@ -92,6 +92,8 @@ class Node:
     of the game.
     """
 
+    is_decision = False
+
     def __init__(self, node_id, payoff=0, rng=None):
         """
 
@@ -145,6 +147,10 @@ class Node:
         :return:
         """
 
+        if classifier is not None and self.is_decision:
+            raise ValidationError(
+                f"Node {self.node_id} is a decision node; its edges cannot carry classifier weights"
+            )
         if classifier is None:
             self.outcomes.append((Edge(self, node, cost=cost), weight))
         else:
@@ -162,6 +168,11 @@ class Node:
         return w_out
 
     def weighted_choice(self, feature_vector=None):
+        if self.is_decision:
+            raise ValidationError(
+                f"Node {self.node_id} is an unresolved decision node; resolve it with "
+                "Graph.optimal_policy() and Graph.apply_policy() before sampling"
+            )
         choices = self.get_weights(feature_vector=feature_vector)
         total = _validate_transition_weights(self.node_id, choices)
         r = self._rng().uniform(0, total)
