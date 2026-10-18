@@ -9,8 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.0] - 2026-10-18
 
-This release adds deterministic evaluation and initial-option risk comparison alongside
-simulation, plus portable JSON models and sensitivity charts.
+This release adds deterministic evaluation, initial-option risk comparison and exact
+multi-stage decision policies alongside simulation, plus portable JSON models and
+sensitivity charts.
 
 ### Added
 
@@ -40,10 +41,18 @@ simulation, plus portable JSON models and sensitivity charts.
   and unknown formats/versions are rejected.
 - A packaged draft 2020-12 JSON Schema describes version-1 model structure for external
   tooling. Graph semantics and numeric constraints still require loader validation.
+- Decision nodes: `from_dict` accepts `"decision": True` on any node, and
+  `Graph.optimal_policy()` / `Graph.apply_policy()` find and fix the exact optimal choice
+  at every stage by backward induction. Exact evaluators and simulators raise
+  `ValidationError` on a graph with unresolved decision nodes; `to_dict`/`to_json`
+  round-trip the flag and omit it when false.
 - A PEP 561 `py.typed` marker exposes inline types to downstream type checkers.
 - `examples/exact_analysis.py` demonstrates exact evaluation, option risk, sensitivity,
   Mermaid export and a tornado chart; `examples/sensitivity_tornado.py` demonstrates
   sensitivity plotting. Both run in CI.
+- `examples/sequential_policy.py` compares `optimal_policy()` with an always-continue
+  policy on a continue-or-abandon model, with exact expected value, outcome distribution
+  and loss probability for each; it runs in CI.
 
 ### Fixed
 

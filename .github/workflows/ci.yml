@@ -108,6 +108,7 @@ jobs:
           examples/print.py \
           examples/simple_distribution_example.py \
           examples/sensitivity_tornado.py \
+          examples/sequential_policy.py \
           examples/stpetersburg.py \
           examples/two_envelope_problem.py
         do

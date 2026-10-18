@@ -341,6 +341,30 @@ or below the quantile. `return_samples=True` (only valid together with `distribu
 also returns each option's raw per-walk outcome samples as a numpy array. Calls without the
 new kwargs keep the historical return shape.
 
+### Decision Nodes and Optimal Policies
+
+Mark a node `"decision": True` and the decision-maker, not a weighted draw, chooses its
+outgoing edge (its edge weights are ignored). `optimal_policy()` finds the best choice at
+every decision node by backward induction, and `apply_policy()` returns a new graph with
+those choices fixed. Evaluating or simulating a graph that still has decision nodes raises
+`ValidationError`.
+
+```python
+g = Graph().from_dict({
+    1: {"decision": True, "after": []},
+    2: {"payoff": 8, "after": [{"node_id": 1}]},
+    3: {"payoff": 2, "decision": True, "after": [{"node_id": 1, "cost": 1}]},
+    4: {"payoff": 16, "after": [{"node_id": 3, "cost": 4}]},
+    5: {"payoff": 0, "after": [{"node_id": 3}]},
+})
+best = g.optimal_policy()  # {"value": 13.0, "policy": {1: 3, 3: 4}}
+resolved = g.apply_policy(best["policy"])  # a new graph with those choices fixed
+resolved.expected_value()  # 13.0; variance(), exact_sensitivity() and simulation work too
+```
+
+See [examples/sequential_policy.py](examples/sequential_policy.py) for a runnable comparison of
+the optimal policy with always-continue, including exact outcome distributions.
+
 Error Handling
 ==============
 
