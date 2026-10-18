@@ -7,68 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+## [0.5.0] - 2026-10-18
 
-- Publish a draft 2020-12 JSON Schema for version-1 graph models, with serializer contract tests.
-
-- `Graph.option_statistics(alpha=0.05, max_outcomes=10000)` summarises each initial option from
-  its exact distribution: `mean`, population `std`, `p_loss`, and the discrete `var_alpha`
-  (smallest outcome whose cumulative mass reaches alpha) and `cvar_alpha` (probability-weighted
-  mean of outcomes at or below it, whole boundary atom included).
-
-- Ship a PEP 561 `py.typed` marker so downstream mypy/pyright use Petersburg's inline types; CI now
-  type-checks a snippet against the installed wheel.
-
-### Changed
-
-- The `mypy petersburg/` CI step is a blocking gate (no `continue-on-error`).
-
-- `mypy petersburg/` now reports zero errors: distinct variable names per branch in
-  `Graph.analyze_sensitivity`, and annotations on a few untyped locals. No behaviour change.
-  `py.typed` and a blocking CI type check are not part of this change.
+This release adds deterministic evaluation and initial-option risk comparison alongside
+simulation, plus portable JSON models and sensitivity charts.
 
 ### Added
 
-- `examples/exact_analysis.py` walks a launch-or-hold model through the exact evaluators
-  (expected value, per-option values, std, loss probability, exact sensitivity), a Mermaid
-  export and a tornado chart saved to a temporary directory; it runs in the CI examples job.
-
-- `Graph.option_distributions(max_outcomes=10000)` returns the exact outcome distribution of
-  each initial option (same keys as `get_options`/`expected_options`) for fixed-payoff graphs,
-  so tail risk can be compared between options without sampling.
-
-- `Graph.exact_sensitivity(perturbation=0.1, parameter_types=SENSITIVITY_PARAMETER_TYPES)`
-  ranks edge weights, costs and payoffs by re-evaluating the exact `expected_value()` at
-  `±perturbation`, with no sampling, so results are identical across calls and seeds. The
-  report matches `analyze_sensitivity` (uncapped) and works with `plot_sensitivity`.
-  Classifier-weighted graphs raise `ValidationError`.
-
-- `Graph.outcome_distribution(max_outcomes=10000)` computes exact fixed-payoff outcome
-  masses without sampling, merging exactly equal outcomes and bounding each node's support.
-  Unsupported reachable models and support overflow raise `ValidationError`.
-
-- `Graph.variance()` and `Graph.std()` compute exact net outcome spread without simulation.
-
-- `Graph.to_json(indent=None)` / `Graph.from_json(text)` save and load a graph as a
-  `petersburg-graph` version 1 JSON document. Nodes are a list, so `int` and `str` ids keep
-  their type, and NumPy scalars are written as plain numbers. Other id types, classifier
-  weights, and unknown `format`/`version` raise `ValidationError`.
-- `Graph.expected_value()` returns the exact expected net outcome of `get_outcome()` for
-  graphs with numeric weights, via one memoized pass over the DAG (no simulation). It raises
-  `ValidationError` for classifier-weighted edges, power-law nodes with `alpha <= 1`, and
-  non-finite results.
-- `Graph.expected_options()` returns the exact expected value of each start-node option under
-  the same keys as `get_options()` (including `(node_id, occurrence)` for parallel options),
-  sharing one implementation with `expected_value()`. Same `ValidationError` rules apply.
-- `Graph.plot_sensitivity()` returns a matplotlib tornado chart from either sensitivity
-  report format, with top-N selection, baseline and seed labels, and optional file output.
+- `Graph.expected_value()` and `Graph.expected_options()` compute exact expected net
+  payoffs for numeric-weight graphs without simulation, including start payoffs and
+  edge costs. Option keys match `get_options()`, including parallel options.
+- `Graph.variance()` and `Graph.std()` compute exact population spread. Moment evaluators
+  reject unsupported classifier weights and non-finite required moments; Pareto means
+  require `alpha > 1` and variances require `alpha > 2` on positive-probability paths.
+- `Graph.outcome_distribution(max_outcomes=10000)` and `Graph.option_distributions()`
+  compute exact probability masses for fixed-payoff graphs. Equal outcomes merge, and
+  the support cap bounds each node's distribution; unsupported reachable models and
+  support overflow raise `ValidationError`.
+- `Graph.option_statistics(alpha=0.05, max_outcomes=10000)` summarizes exact option
+  distributions with mean, population standard deviation, loss probability and discrete
+  VaR/CVaR. VaR is the smallest outcome reaching cumulative mass alpha; CVaR is the
+  probability-weighted mean at or below it, including the whole boundary atom.
+- `Graph.exact_sensitivity()` ranks weights, costs and payoffs by perturbing exact
+  expected values without sampling or a parameter cap, preserves random state, and
+  produces reports compatible with `Graph.plot_sensitivity()`.
+- `Graph.plot_sensitivity()` returns a matplotlib tornado chart from sampled or exact
+  sensitivity reports, with top-N selection and optional file output. Requires the
+  `visualization` extra.
+- `Graph.to_json(indent=None)` / `Graph.from_json(text)` save and load version-1
+  `petersburg-graph` documents, preserving integer/string node IDs and converting NumPy
+  scalars to plain numbers. RNG state is omitted; unsupported IDs, classifier weights
+  and unknown formats/versions are rejected.
+- A packaged draft 2020-12 JSON Schema describes version-1 model structure for external
+  tooling. Graph semantics and numeric constraints still require loader validation.
+- A PEP 561 `py.typed` marker exposes inline types to downstream type checkers.
+- `examples/exact_analysis.py` demonstrates exact evaluation, option risk, sensitivity,
+  Mermaid export and a tornado chart; `examples/sensitivity_tornado.py` demonstrates
+  sensitivity plotting. Both run in CI.
 
 ### Fixed
 
-- Distribution nodes now reject non-real, non-finite, and out-of-domain parameters
-  at construction with `ValidationError`, including when built through `Graph.from_dict`.
-  Zero standard deviations and equal uniform bounds remain valid; omitted dictionary
-  parameters retain their existing defaults.
+- Distribution nodes reject non-real, non-finite and out-of-domain parameters at
+  construction with `ValidationError`, including through `Graph.from_dict`. Zero
+  standard deviations, equal uniform bounds and existing dictionary defaults remain valid.
+
+### Changed
+
+- Mypy now passes and blocks CI, with installed-wheel checks for inline typing support.
+  Type cleanup does not change runtime behavior.
+- Updated the development lockfile, including urllib3 2.8.0 (from 2.7.0).
 
 ## [0.4.0] - 2026-10-03
 
