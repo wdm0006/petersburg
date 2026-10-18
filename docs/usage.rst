@@ -204,6 +204,10 @@ decision nodes raises :class:`~petersburg.exceptions.ValidationError`.
     resolved = g.apply_policy(best["policy"])  # a new graph with those choices fixed
     resolved.expected_value()  # 13.0; variance(), exact_sensitivity() and simulation work too
 
+A runnable comparison of the optimal policy with an always-continue policy, with exact outcome
+distributions and loss probabilities, is in `examples/sequential_policy.py
+<https://github.com/wdm0006/petersburg/blob/master/examples/sequential_policy.py>`_.
+
 Serialization
 -------------
 

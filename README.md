@@ -362,6 +362,9 @@ resolved = g.apply_policy(best["policy"])  # a new graph with those choices fixe
 resolved.expected_value()  # 13.0; variance(), exact_sensitivity() and simulation work too
 ```
 
+See [examples/sequential_policy.py](examples/sequential_policy.py) for a runnable comparison of
+the optimal policy with always-continue, including exact outcome distributions.
+
 Error Handling
 ==============
 

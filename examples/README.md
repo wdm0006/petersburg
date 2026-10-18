@@ -64,6 +64,16 @@ End-to-end deterministic workflow on a launch-or-hold decision.
 MPLBACKEND=Agg .venv/bin/python3 examples/exact_analysis.py
 ```
 
+### [sequential_policy.py](sequential_policy.py)
+Observed-state continue-or-abandon decisions: `optimal_policy()` vs a hand-written always-continue policy.
+
+**Key concept**: The state is observed before each decision, so the optimal policy continues in the favorable state and abandons in the unfavorable one. `apply_policy()` turns each policy into a graph whose exact expected net payoff, outcome PMF and loss probability are compared. The objective is expected value, not minimum loss probability; this is not EVPI.
+
+**Run it**:
+```bash
+.venv/bin/python3 examples/sequential_policy.py
+```
+
 ### [automatic_sensitivity_demo.py](automatic_sensitivity_demo.py)
 Demonstrates the framework's automatic sensitivity analysis feature.
 

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `examples/sequential_policy.py` compares `optimal_policy()` with an always-continue policy on an
+  observed-state continue-or-abandon model, with exact expected value, outcome PMF and loss
+  probability for each; it runs in the examples CI job.
+
 - Publish a draft 2020-12 JSON Schema for version-1 graph models, with serializer contract tests.
 
 - `Graph.option_statistics(alpha=0.05, max_outcomes=10000)` summarises each initial option from
