@@ -7,13 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `petersburg.value_of_information(scenarios, actions, observation=None, cost=0.0)` computes
+  the exact value of information over a finite scenario table by solving a no-information
+  graph (decide, then chance) and an informed graph (chance over observed groups, then decide)
+  with `optimal_policy()`. `observation` is a partition of the scenarios (`None` is full
+  revelation; one group is no information). Returns the values, gross and net value and both
+  policies; inputs are bounded and validated with `ValidationError`.
+
 ### Changed
 
 - `examples/decision_vs_research.py` is now an importable, deterministic exact walkthrough of
   the value of perfect information: paired graphs built from one joint scenario table, solved
   with `optimal_policy()`/`apply_policy()`, reporting no-information value, perfect-information
   value, gross EVPI and net improvement after an explicit information cost. It replaces the
-  Monte Carlo illustration and still runs in CI.
+  Monte Carlo illustration and still runs in CI. It now calls `value_of_information()`.
 
 ## [0.5.0] - 2026-10-18
 

@@ -2152,3 +2152,179 @@ class Graph:
         # nx.draw_networkx_edge_labels(g, pos, labels=edge_labels)
         plt.savefig(filename)
         plt.close()
+
+
+MAX_INFORMATION_SCENARIOS = 200
+MAX_INFORMATION_ACTIONS = 20
+INFORMATION_PROBABILITY_TOLERANCE = 1e-9
+
+
+def _finite_real(value):
+    return not isinstance(value, bool) and isinstance(value, numbers.Real) and math.isfinite(value)
+
+
+def _validate_information_inputs(scenarios, actions, observation, cost):
+    if not _finite_real(cost) or cost < 0:
+        raise ValidationError(f"cost must be a nonnegative finite number, got {cost!r}")
+    if isinstance(actions, (str, bytes)) or not hasattr(actions, "__iter__"):
+        raise ValidationError("actions must be a sequence of action labels")
+    actions = list(actions)
+    if not actions:
+        raise ValidationError("actions must contain at least one action")
+    if len(actions) > MAX_INFORMATION_ACTIONS:
+        raise ValidationError(
+            f"at most {MAX_INFORMATION_ACTIONS} actions are supported, got {len(actions)}"
+        )
+    try:
+        unique = len(set(actions))
+    except TypeError:
+        raise ValidationError("actions must be hashable labels") from None
+    if unique != len(actions):
+        raise ValidationError("actions must not contain duplicates")
+    if not isinstance(scenarios, dict) or not scenarios:
+        raise ValidationError("scenarios must be a non-empty dict of scenario id -> spec")
+    if len(scenarios) > MAX_INFORMATION_SCENARIOS:
+        raise ValidationError(
+            f"at most {MAX_INFORMATION_SCENARIOS} scenarios are supported, got {len(scenarios)}"
+        )
+    total = 0.0
+    for name, spec in scenarios.items():
+        if not isinstance(spec, dict) or set(spec) != {"probability", "payoffs"}:
+            raise ValidationError(
+                f"scenario {name!r} must be a dict with exactly 'probability' and 'payoffs'"
+            )
+        probability, payoffs = spec["probability"], spec["payoffs"]
+        if not _finite_real(probability) or probability < 0:
+            raise ValidationError(
+                f"scenario {name!r} probability must be a nonnegative finite number, "
+                f"got {probability!r}"
+            )
+        total += probability
+        if not isinstance(payoffs, dict) or set(payoffs) != set(actions):
+            raise ValidationError(
+                f"scenario {name!r} must define payoffs for exactly the actions {actions!r}"
+            )
+        for action, payoff in payoffs.items():
+            if not _finite_real(payoff):
+                raise ValidationError(
+                    f"scenario {name!r} payoff for action {action!r} must be a finite "
+                    f"number, got {payoff!r}"
+                )
+    if abs(total - 1.0) > INFORMATION_PROBABILITY_TOLERANCE:
+        raise ValidationError(
+            f"scenario probabilities must sum to 1 (tolerance "
+            f"{INFORMATION_PROBABILITY_TOLERANCE}), got {total!r}"
+        )
+    if observation is None:
+        groups = [(name,) for name in scenarios]
+    else:
+        if isinstance(observation, (str, bytes)) or not hasattr(observation, "__iter__"):
+            raise ValidationError("observation must be a list of groups of scenario ids")
+        groups = []
+        seen = set()
+        for group in observation:
+            if isinstance(group, (str, bytes)) or not hasattr(group, "__iter__"):
+                raise ValidationError(f"observation group {group!r} must be a list of scenario ids")
+            group = tuple(group)
+            if not group:
+                raise ValidationError("observation groups must not be empty")
+            for name in group:
+                if name not in scenarios:
+                    raise ValidationError(f"observation names unknown scenario {name!r}")
+                if name in seen:
+                    raise ValidationError(
+                        f"scenario {name!r} appears more than once in observation"
+                    )
+                seen.add(name)
+            groups.append(group)
+        missing = [name for name in scenarios if name not in seen]
+        if missing:
+            raise ValidationError(f"observation does not cover scenarios {missing!r}")
+    return actions, groups
+
+
+def value_of_information(scenarios, actions, observation=None, cost=0.0):
+    """
+    Exact expected value of information over a finite scenario table.
+
+    Two graphs are built from the same table and solved with :meth:`Graph.optimal_policy`.
+    Without information one decision node comes BEFORE the scenario chance, so a single action
+    must serve every scenario. With information chance first picks the observed group, and a
+    decision node per group then chooses an action before the scenario within that group is
+    resolved.
+
+    :param scenarios: ``{scenario_id: {"probability": p, "payoffs": {action: payoff}}}``.
+        Probabilities are finite and non-negative and must sum to 1 within ``1e-9``; every
+        scenario defines a finite payoff for exactly ``actions``. At most
+        ``MAX_INFORMATION_SCENARIOS`` scenarios and ``MAX_INFORMATION_ACTIONS`` actions.
+    :param actions: Sequence of distinct, hashable action labels.
+    :param observation: Partition of the scenario ids into the groups a study reveals.
+        ``None`` means full revelation (every scenario its own group); one group containing
+        every scenario means no information.
+    :param cost: Nonnegative finite price of the study, subtracted once from the gross value.
+    :return: ``{"value_without", "value_with", "gross_value", "net_value", "policy_without",
+        "policy_with"}``. ``policy_without`` is the best single action; ``policy_with`` maps
+        each observed group (a tuple of scenario ids) to its best action. Groups with zero
+        probability are omitted.
+    :raises ValidationError: For invalid probabilities, payoff tables, partitions, costs or
+        oversized inputs
+
+    >>> from petersburg import value_of_information
+    >>> table = {
+    ...     "s1": {"probability": 0.5, "payoffs": {"A": 30, "B": 0}},
+    ...     "s2": {"probability": 0.5, "payoffs": {"A": 0, "B": 20}},
+    ... }
+    >>> r = value_of_information(table, ["A", "B"], cost=5)
+    >>> r["value_without"], r["value_with"], r["gross_value"], r["net_value"]
+    (15.0, 25.0, 10.0, 5.0)
+    >>> r["policy_with"]
+    {('s1',): 'A', ('s2',): 'B'}
+    """
+    actions, groups = _validate_information_inputs(scenarios, actions, observation, cost)
+
+    counter = iter(range(1, 10**9))
+
+    def add_actions(spec, parent, names):
+        decision_options = {}
+        for action in actions:
+            act = next(counter)
+            spec[act] = {"after": [{"node_id": parent}]}
+            decision_options[act] = action
+            for name in names:
+                spec[next(counter)] = {
+                    "payoff": scenarios[name]["payoffs"][action],
+                    "after": [{"node_id": act, "weight": scenarios[name]["probability"]}],
+                }
+        return decision_options
+
+    spec = {0: {"decision": True, "after": []}}
+    options = add_actions(spec, 0, list(scenarios))
+    value_without, chosen = Graph().from_dict(spec).optimal_policy().values()
+    policy_without = options[chosen[0]]
+
+    spec = {0: {"after": []}}
+    decisions = {}
+    for group in groups:
+        mass = sum(scenarios[name]["probability"] for name in group)
+        if mass <= 0:
+            continue
+        node = next(counter)
+        spec[node] = {"decision": True, "after": [{"node_id": 0, "weight": mass}]}
+        decisions[node] = (group, add_actions(spec, node, group))
+    best = Graph().from_dict(spec).optimal_policy()
+    value_with = best["value"]
+    policy_with = {
+        decisions[node][0]: decisions[node][1][choice] for node, choice in best["policy"].items()
+    }
+
+    gross = value_with - value_without
+    if gross < 0 and -gross <= 1e-9 * max(1.0, abs(value_with), abs(value_without)):
+        gross = 0.0
+    return {
+        "value_without": value_without,
+        "value_with": value_with,
+        "gross_value": gross,
+        "net_value": gross - cost,
+        "policy_without": policy_without,
+        "policy_with": policy_with,
+    }

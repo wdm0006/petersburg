@@ -13,7 +13,7 @@ import importlib.metadata
 from petersburg.edges import Edge
 from petersburg.estimators import FrequencyEstimator, MixedModeEstimator
 from petersburg.exceptions import PetersburgError, SpecValidationError, ValidationError
-from petersburg.graph import Graph
+from petersburg.graph import Graph, value_of_information
 from petersburg.nodes import GaussianNode, LogNormalNode, Node, PowerLawNode, UniformNode
 
 try:
@@ -32,6 +32,7 @@ __all__ = [
     "PowerLawNode",
     "MixedModeEstimator",
     "Graph",
+    "value_of_information",
     "Edge",
     "FrequencyEstimator",
     "PetersburgError",

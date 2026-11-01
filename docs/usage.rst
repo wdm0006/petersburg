@@ -215,6 +215,25 @@ and chance followed by a decision node per scenario. The gap is the gross EVPI; 
 cost is subtracted once for the net improvement. Perfect information reveals the entire joint
 scenario, so it is an upper bound on research value, not a noisy-study model.
 
+:func:`~petersburg.graph.value_of_information` packages that pairing for any finite table:
+
+.. code-block:: python
+
+    from petersburg import value_of_information
+
+    table = {
+        "s1": {"probability": 0.5, "payoffs": {"A": 30, "B": 0}},
+        "s2": {"probability": 0.5, "payoffs": {"A": 0, "B": 20}},
+    }
+    r = value_of_information(table, ["A", "B"], cost=5)
+    # value_without 15.0, value_with 25.0, gross_value 10.0, net_value 5.0
+    value_of_information(table, ["A", "B"], observation=[["s1", "s2"]])  # no information: gross 0
+
+``observation`` partitions the scenarios into the groups a study reveals (``None`` reveals
+each scenario). The decision is made after the group is observed but before the scenario
+within it is resolved. Probabilities must sum to 1 within ``1e-9``; noisy studies and
+continuous payoffs are out of scope.
+
 Serialization
 -------------
 
