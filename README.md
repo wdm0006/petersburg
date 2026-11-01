@@ -365,6 +365,12 @@ resolved.expected_value()  # 13.0; variance(), exact_sensitivity() and simulatio
 See [examples/sequential_policy.py](examples/sequential_policy.py) for a runnable comparison of
 the optimal policy with always-continue, including exact outcome distributions.
 
+See [examples/decision_vs_research.py](examples/decision_vs_research.py) for the exact value of
+perfect information: one joint scenario table builds a graph that decides before the scenario
+resolves and one that decides after observing it (gross EVPI 10, net 5 at cost 5). Perfect
+information reveals the whole joint scenario, so it bounds research value rather than modelling
+a noisy study.
+
 Error Handling
 ==============
 
