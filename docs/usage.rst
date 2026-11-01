@@ -208,6 +208,13 @@ A runnable comparison of the optimal policy with an always-continue policy, with
 distributions and loss probabilities, is in `examples/sequential_policy.py
 <https://github.com/wdm0006/petersburg/blob/master/examples/sequential_policy.py>`_.
 
+The exact value of perfect information is in `examples/decision_vs_research.py
+<https://github.com/wdm0006/petersburg/blob/master/examples/decision_vs_research.py>`_. One joint
+scenario table builds two graphs: a decision node before chance (one action for every scenario)
+and chance followed by a decision node per scenario. The gap is the gross EVPI; the information
+cost is subtracted once for the net improvement. Perfect information reveals the entire joint
+scenario, so it is an upper bound on research value, not a noisy-study model.
+
 Serialization
 -------------
 

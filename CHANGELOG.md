@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `examples/decision_vs_research.py` is now an importable, deterministic exact walkthrough of
+  the value of perfect information: paired graphs built from one joint scenario table, solved
+  with `optimal_policy()`/`apply_policy()`, reporting no-information value, perfect-information
+  value, gross EVPI and net improvement after an explicit information cost. It replaces the
+  Monte Carlo illustration and still runs in CI.
+
 ## [0.5.0] - 2026-10-18
 
 This release adds deterministic evaluation, initial-option risk comparison and exact
