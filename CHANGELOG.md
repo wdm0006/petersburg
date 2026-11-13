@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-12
+
+This release adds exact value-of-information analysis over finite scenario tables.
+
 ### Added
 
 - `petersburg.value_of_information(scenarios, actions, observation=None, cost=0.0)` computes
