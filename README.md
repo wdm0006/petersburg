@@ -136,6 +136,10 @@ pip install petersburg[examples]       # pandas on top of visualization (example
 pip install petersburg[all]            # everything above plus dev tooling
 ```
 
+Security note: `petersburg[visualization]` requires Pillow >= 13 on Python 3.11+ (GHSA-g7cr-3p24-7wf7).
+Pillow 13 needs Python 3.11, so on Python 3.9 and 3.10 the older, still-affected Pillow is installed and
+is not remediated. Petersburg only saves generated figures and never opens images with Pillow.
+
 ### From source (recommended for development)
 
 ```bash

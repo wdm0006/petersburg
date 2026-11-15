@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The `visualization` extra now requires `pillow>=13.0.0` on Python 3.11+ (fixes
+  GHSA-g7cr-3p24-7wf7, which affects Pillow >=9.4,<13), and `uv.lock` selects Pillow 13.0.0
+  there. Pillow 13 requires Python 3.11, so Python 3.9 and 3.10 keep installing older Pillow
+  (11.3.0 and 12.x respectively) that remains affected by that advisory; this is not remediated
+  and Python support is unchanged. Petersburg only saves generated figures and has no direct
+  `PIL.Image.open` call; no exploit is demonstrated.
+
 ## [0.6.0] - 2026-11-12
 
 This release adds exact value-of-information analysis over finite scenario tables.
