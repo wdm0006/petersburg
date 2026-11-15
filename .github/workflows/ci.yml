@@ -149,6 +149,12 @@ jobs:
         cp examples/sensitivity_tornado.py /tmp/petersburg-tornado.py
         cd /tmp
         /tmp/petersburg-viz/bin/python petersburg-tornado.py
+        /tmp/petersburg-viz/bin/python - <<'PY'
+        import PIL
+        major = int(PIL.__version__.split(".")[0])
+        assert major >= 13, f"unpatched Pillow {PIL.__version__}"
+        print("Pillow", PIL.__version__)
+        PY
 
     - name: Check py.typed is shipped and honoured by mypy
       run: |

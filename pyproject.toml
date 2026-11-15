@@ -54,6 +54,7 @@ dev = [
 visualization = [
     "networkx>=2.6.0",
     "matplotlib>=3.5.0",
+    "pillow>=13.0.0; python_version >= '3.11'",
 ]
 graphviz = [
     "pygraphviz>=1.10",
